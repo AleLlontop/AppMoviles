@@ -1,6 +1,4 @@
-# TimeLab (Antigravity) ⏳
 
-Una aplicación móvil premium diseñada para la gestión del tiempo, concentración y estudio, construida con React Native (Expo) y Supabase.
 
 ## 🚀 Requisitos Previos
 
