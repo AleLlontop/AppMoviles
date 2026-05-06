@@ -25,7 +25,7 @@ const TabIcon = ({ name, focused, size }: any) => {
       </View>
     );
   }
-  return <Ionicons name={`${name}-outline`} size={size} color="#4B5563" />;
+  return <Ionicons name={`${name}-outline` as any} size={size} color="#4B5563" />;
 };
 
 export default function TabLayout() {
