@@ -3,40 +3,31 @@ import React from 'react';
 import { View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HapticTab } from '@/components/haptic-tab';
+import { UserAvatar } from '@/components/user-avatar';
 
-const TabIcon = ({ name, focused, size }: any) => {
-  if (focused) {
-    return (
-      <View style={{ alignItems: 'center', justifyContent: 'center', width: size, height: size }}>
-        <View style={{
-          position: 'absolute',
-          width: 22,
-          height: 22,
-          backgroundColor: '#A594F9',
-          borderRadius: 11,
-          opacity: 0.35,
-          shadowColor: '#A594F9',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.8,
-          shadowRadius: 8,
-          elevation: 5,
-        }} />
-        <Ionicons name={name} size={size} color="#A594F9" />
-      </View>
-    );
-  }
-  return <Ionicons name={`${name}-outline`} size={size} color="#4B5563" />;
+const TabIcon = ({ name, focused }: any) => {
+  const iconName = focused ? name : `${name}-outline`;
+
+  return (
+    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+      <Ionicons
+        name={iconName as any}
+        size={24}
+        color={focused ? '#A594F9' : '#4B5563'}
+      />
+    </View>
+  );
 };
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerRight: () => <UserAvatar />,
+
         tabBarButton: HapticTab,
-        tabBarShowLabel: true,
-        tabBarActiveTintColor: '#1F2937', 
-        tabBarInactiveTintColor: '#4B5563', 
+
         tabBarStyle: {
           position: 'absolute',
           bottom: Platform.OS === 'ios' ? 32 : 24,
@@ -45,47 +36,57 @@ export default function TabLayout() {
           backgroundColor: '#FFFFFF',
           borderRadius: 36,
           height: 72,
-          paddingBottom: Platform.OS === 'ios' ? 12 : 12,
-          paddingTop: 12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.05,
-          shadowRadius: 20,
-          elevation: 10,
           borderTopWidth: 0,
         },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
-          marginTop: 2,
-        }
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ focused, size }) => <TabIcon name="home" focused={focused} size={24} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="home" focused={focused} />
+          ),
         }}
       />
+
       <Tabs.Screen
         name="group"
         options={{
           title: 'Group',
-          tabBarIcon: ({ focused, size }) => <TabIcon name="people" focused={focused} size={24} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="people" focused={focused} />
+          ),
         }}
       />
+
       <Tabs.Screen
         name="estadisticas"
         options={{
           title: 'Stats',
-          tabBarIcon: ({ focused, size }) => <TabIcon name="bar-chart" focused={focused} size={24} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="stats-chart" focused={focused} />
+          ),
         }}
       />
+
       <Tabs.Screen
         name="more"
         options={{
           title: 'More',
-          tabBarIcon: ({ focused, size }) => <TabIcon name="ellipsis-horizontal" focused={focused} size={24} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="ellipsis-horizontal" focused={focused} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="UserProfile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="person" focused={focused} />
+          ),
         }}
       />
     </Tabs>
