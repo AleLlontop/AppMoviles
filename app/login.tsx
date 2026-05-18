@@ -1,220 +1,268 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Platform, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { supabase } from '@/utils/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
+
+// Google "G" logo con los colores oficiales de la marca
+const GoogleG = () => (
+  <View style={googleGStyles.container}>
+    <Text style={[googleGStyles.letter, { color: '#4285F4' }]}>G</Text>
+    <View style={[googleGStyles.bar, { backgroundColor: '#34A853', bottom: 0, left: '50%' }]} />
+    <View style={[googleGStyles.bar, { backgroundColor: '#FBBC05', bottom: 0, right: '50%' }]} />
+    <View style={[googleGStyles.bar, { backgroundColor: '#EA4335', top: 0, right: '50%' }]} />
+  </View>
+);
+
+const googleGStyles = StyleSheet.create({
+  container: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  letter: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  bar: {
+    position: 'absolute',
+    width: '48%',
+    height: 2.5,
+    borderRadius: 2,
+  },
+});
+
 export default function LoginScreen() {
-  const router = useRouter();
+  const [loadingProvider, setLoadingProvider] = useState<'google' | 'github' | null>(null);
 
   const createSessionFromUrl = async (url: string) => {
     try {
-      // Manual parsing to avoid React Native URL polyfill crashes
       const hashIndex = url.indexOf('#');
       const queryIndex = url.indexOf('?');
-      
       let paramsString = '';
-      if (hashIndex !== -1) {
-        paramsString = url.substring(hashIndex + 1);
-      } else if (queryIndex !== -1) {
-        paramsString = url.substring(queryIndex + 1);
-      }
-
+      if (hashIndex !== -1) paramsString = url.substring(hashIndex + 1);
+      else if (queryIndex !== -1) paramsString = url.substring(queryIndex + 1);
       if (!paramsString) return;
 
       const params = paramsString.split('&').reduce((acc, current) => {
         const [key, value] = current.split('=');
-        if (key && value) {
-          acc[key] = decodeURIComponent(value);
-        }
+        if (key && value) acc[key] = decodeURIComponent(value);
         return acc;
       }, {} as Record<string, string>);
 
-      if (params.error_description) {
-        throw new Error(params.error_description);
-      }
+      if (params.error_description) throw new Error(params.error_description);
+      const { access_token, refresh_token } = params;
+      if (!access_token || !refresh_token) return;
 
-      const access_token = params.access_token;
-      const refresh_token = params.refresh_token;
-
-      if (!access_token || !refresh_token) {
-         return;
-      }
-
-      const { data, error } = await supabase.auth.setSession({
-        access_token,
-        refresh_token,
-      });
-      
+      const { error } = await supabase.auth.setSession({ access_token, refresh_token });
       if (error) throw error;
-      return data.session;
     } catch (err: any) {
-      Alert.alert("Error procesando sesión", err.message || "Error desconocido al leer la URL");
-      throw err;
+      Alert.alert('Error de autenticación', err.message || 'No se pudo iniciar sesión');
     }
   };
 
-  React.useEffect(() => {
-    // 1. Listen for Supabase auth state changes (native deep linking handles this sometimes)
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        router.replace('/(tabs)');
-      }
-    });
-
-    return () => {
-      authListener?.subscription.unsubscribe();
-    };
-  }, []);
-
-  const handleOAuthLogin = async (provider: 'github' | 'google') => {
+  const handleOAuthLogin = async (provider: 'google' | 'github') => {
     try {
+      setLoadingProvider(provider);
       const redirectUrl = AuthSession.makeRedirectUri();
 
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: provider,
+        provider,
         options: {
           redirectTo: redirectUrl,
-          queryParams: provider === 'google' ? {
-            access_type: 'offline',
-            prompt: 'consent',
-          } : undefined,
           skipBrowserRedirect: true,
+          queryParams: provider === 'google'
+            ? { access_type: 'offline', prompt: 'consent' }
+            : undefined,
         },
       });
 
-      if (error) {
-        Alert.alert("Error de Supabase", error.message);
-        return;
-      }
+      if (error) { Alert.alert('Error', error.message); return; }
+      if (!data?.url) return;
 
-      if (data?.url) {
-        // En lugar de usar WebBrowser (que es lo que está crasheando tu celular a nivel nativo),
-        // usamos Linking para abrir el navegador del sistema externo y evitar el crasheo de Expo Go.
-        const Linking = await import('expo-linking');
-        
-        // Agregar un listener para cuando la app vuelva del navegador externo
-        const subscription = Linking.addEventListener('url', async (event) => {
-          if (event.url) {
-            await createSessionFromUrl(event.url);
-            subscription.remove();
-            router.replace('/(tabs)');
-          }
-        });
-
-        // Abrir la URL en el navegador del celular (Safari/Chrome externo)
-        await Linking.openURL(data.url);
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      if (result.type === 'success' && result.url) {
+        await createSessionFromUrl(result.url);
       }
-    } catch (error: any) {
-      Alert.alert("Error Crítico", error.message || "Ocurrió un problema inesperado.");
-      console.error("Login unexpected error:", error);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Ocurrió un problema inesperado');
+    } finally {
+      setLoadingProvider(null);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>Iniciar Sesión</Text>
-          <Text style={styles.subtitle}>Elige un método para continuar</Text>
-
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={styles.authButton} 
-              activeOpacity={0.7}
-              onPress={() => handleOAuthLogin('google')}
-            >
-              <Ionicons name="logo-google" size={24} color="#DB4437" style={styles.icon} />
-              <Text style={styles.buttonText}>Google</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.authButton} 
-              activeOpacity={0.7}
-              onPress={() => handleOAuthLogin('github')}
-            >
-              <Ionicons name="logo-github" size={24} color="#333" style={styles.icon} />
-              <Text style={styles.buttonText}>GitHub</Text>
-            </TouchableOpacity>
+    <LinearGradient colors={['#A799E7', '#6B4FBB']} style={styles.gradient}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.topSection}>
+          <View style={styles.logoMark}>
+            <Text style={styles.logoSymbol}>⏱</Text>
           </View>
-
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.cancelText}>Cancelar</Text>
-          </TouchableOpacity>
+          <Text style={styles.appName}>time-lab.</Text>
+          <Text style={styles.tagline}>Enfocá tu tiempo. Dominá tu progreso.</Text>
         </View>
-      </View>
-    </SafeAreaView>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Bienvenido</Text>
+          <Text style={styles.cardSubtitle}>Iniciá sesión para continuar</Text>
+
+          {/* Google */}
+          <TouchableOpacity
+            style={styles.googleBtn}
+            activeOpacity={0.85}
+            onPress={() => handleOAuthLogin('google')}
+            disabled={!!loadingProvider}
+          >
+            {loadingProvider === 'google' ? (
+              <ActivityIndicator size="small" color="#4285F4" />
+            ) : (
+              <>
+                <GoogleG />
+                <Text style={styles.googleBtnText}>Continuar con Google</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {/* GitHub */}
+          <TouchableOpacity
+            style={styles.githubBtn}
+            activeOpacity={0.85}
+            onPress={() => handleOAuthLogin('github')}
+            disabled={!!loadingProvider}
+          >
+            {loadingProvider === 'github' ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="logo-github" size={22} color="#fff" style={{ marginRight: 10 }} />
+                <Text style={styles.githubBtnText}>Continuar con GitHub</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <Text style={styles.terms}>
+            Al continuar, aceptás los términos de uso y la política de privacidad.
+          </Text>
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  gradient: { flex: 1 },
+  safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+    paddingBottom: 32,
   },
-  content: {
+
+  topSection: {
+    alignItems: 'center',
+    marginBottom: 40,
     flex: 1,
+    justifyContent: 'center',
+  },
+  logoMark: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    marginBottom: 16,
   },
-  modal: {
-    width: '100%',
-    maxWidth: 384,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 40,
-    padding: 32,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 30,
-    elevation: 10,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827', // text-gray-900
+  logoSymbol: { fontSize: 36 },
+  appName: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.5,
     marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6B7280', // text-gray-500
-    marginBottom: 40,
+  tagline: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.75)',
+    textAlign: 'center',
+    fontWeight: '400',
   },
-  buttonContainer: {
-    width: '100%',
-    gap: 16,
-    marginBottom: 40,
+
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 32,
+    padding: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
+    elevation: 12,
   },
-  authButton: {
-    width: '100%',
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#191C1E',
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: '#7B7486',
+    marginBottom: 24,
+  },
+
+  googleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
     borderRadius: 16,
+    marginBottom: 12,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  icon: {
-    marginRight: 12,
-  },
-  buttonText: {
-    fontSize: 18,
+  googleBtnText: {
+    fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937', // text-gray-800
+    color: '#191C1E',
   },
-  cancelText: {
-    fontSize: 20,
-    fontWeight: '500',
-    color: '#A594F9', // Brand purple (close to #a29bfe from HTML)
+
+  githubBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#24292e',
+    borderRadius: 16,
+    marginBottom: 20,
+    gap: 10,
+  },
+  githubBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  terms: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

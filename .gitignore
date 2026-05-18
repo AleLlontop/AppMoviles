@@ -42,3 +42,29 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Supabase migration (tiene keys hardcodeadas en comentarios)
+supabase_migration.sql
+
+# Coverage
+coverage/
+.nyc_output/

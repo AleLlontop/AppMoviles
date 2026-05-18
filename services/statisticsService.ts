@@ -17,17 +17,8 @@ export const getStudySessions = async (startDate: string, endDate: string) => {
     .from('study_sessions')
     .select('*, subjects(*), techniques(*)')
     .gte('start_time', startDate)
-    .lte('start_time', endDate);
-  if (error) throw error;
-  return data || [];
-};
-
-export const getSessionSegments = async (sessionIds: string[]) => {
-  if (sessionIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from('session_segments')
-    .select('*')
-    .in('session_id', sessionIds);
+    .lte('start_time', endDate)
+    .order('start_time', { ascending: true });
   if (error) throw error;
   return data || [];
 };
@@ -38,9 +29,6 @@ export const getAllStatisticsData = async (startDate: string, endDate: string) =
     getTechniques(),
     getStudySessions(startDate, endDate)
   ]);
-  
-  const sessionIds = sessions.map(s => s.id);
-  const segments = await getSessionSegments(sessionIds);
-  
-  return { subjects, techniques, sessions, segments };
+
+  return { subjects, techniques, sessions };
 };

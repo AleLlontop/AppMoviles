@@ -5,11 +5,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/utils/supabase';
+import { useUser } from '@/hooks/use-user';
 
 export default function HomeScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('Timer');
-  
+  const user = useUser();
+  const userId = user?.id ?? null;
+
   const [subjects, setSubjects] = useState<any[]>([]);
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -18,15 +21,19 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchSubjects();
-    }, [])
+    }, [userId])
   );
 
   const fetchSubjects = async () => {
-    const { data, error } = await supabase.from('subjects').select('*');
+    let query = supabase.from('subjects').select('*');
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+    const { data, error } = await query;
     if (data) {
       setSubjects(data);
     } else if (error) {
-      console.error("Error fetching subjects:", error);
+      console.error('Error fetching subjects:', error);
     }
   };
 
@@ -66,29 +73,27 @@ export default function HomeScreen() {
         start_time: start.toISOString(),
         end_time: endTime.toISOString(),
         duration: durationSeconds,
-        status: 'completed'
+        status: 'completed',
+        ...(userId ? { user_id: userId } : {}),
       });
     }
   };
 
   const toggleTimer = async (subjectId: string) => {
     if (activeSubjectId === subjectId) {
-      // Pause/Stop the timer for this subject
       setActiveSubjectId(null);
       setTimerSeconds(0);
-      
+
       if (sessionStartTime) {
         const duration = Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000);
         await saveSession(subjectId, sessionStartTime, duration);
       }
     } else {
-      // Start or switch to a new subject
       if (activeSubjectId && sessionStartTime) {
-        // Save the currently running session first before switching
         const duration = Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000);
         await saveSession(activeSubjectId, sessionStartTime, duration);
       }
-      
+
       setActiveSubjectId(subjectId);
       setTimerSeconds(0);
       setSessionStartTime(new Date());
@@ -102,93 +107,117 @@ export default function HomeScreen() {
     return `${h}:${m}:${s}`;
   };
 
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Buenos días';
+    if (h < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  })();
+  const displayName = user?.user_metadata?.full_name?.split(' ')[0]
+    ?? user?.user_metadata?.name?.split(' ')[0]
+    ?? null;
+
   return (
     <View className="flex-1 bg-brand-light">
-      {/* Top Timer Section */}
-      <View className="h-[335px] min-h-[280px] bg-brand-lavender items-center justify-center relative overflow-hidden">
+      {/* Timer header */}
+      <View className="h-[300px] bg-brand-lavender items-center justify-center relative overflow-hidden">
         <LinearGradient
-          colors={['rgba(255,255,255,0.1)', 'transparent']}
+          colors={['rgba(255,255,255,0.12)', 'transparent']}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         />
-        <View className="z-10">
-          <Text className="text-white text-[80px] font-bold tracking-widest">
-            {formatTime(timerSeconds)}
+        {/* Greeting */}
+        {displayName && (
+          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15, fontWeight: '500', marginBottom: 4, zIndex: 10 }}>
+            {greeting}, {displayName} 👋
+          </Text>
+        )}
+        <Text className="text-white text-[72px] font-bold tracking-widest z-10">
+          {formatTime(timerSeconds)}
+        </Text>
+        {activeSubjectId && (
+          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 6, zIndex: 10 }}>
+            {subjects.find(s => s.id === activeSubjectId)?.name ?? ''}
+          </Text>
+        )}
+      </View>
+
+      {/* Tab nav */}
+      <View className="flex-row bg-white py-4 justify-center items-center shadow-sm z-20" style={{ elevation: 2 }}>
+        {(['Timer', 'Estadísticas'] as const).map(tab => (
+          <View key={tab} className="mx-2">
+            <TouchableOpacity
+              className={activeTab === tab ? 'bg-brand-accent px-6 py-2.5 rounded-full items-center justify-center min-w-[120px]' : 'px-6 py-2.5 items-center justify-center min-w-[120px]'}
+              style={activeTab === tab ? { shadowColor: '#826BF0', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.39, shadowRadius: 14, elevation: 8 } : {}}
+              onPress={() => {
+                setActiveTab(tab);
+                if (tab === 'Estadísticas') router.push('/(tabs)/estadisticas');
+              }}
+            >
+              <Text className={activeTab === tab ? 'text-white text-sm font-semibold' : 'text-brand-accent text-sm font-medium'}>
+                {tab}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+
+      {/* Subject list */}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+
+        {/* Section header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#7B7486', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+            Materias · {subjects.length}
           </Text>
         </View>
-      </View>
 
-      {/* Tab Navigation */}
-      <View className="flex-row bg-white py-4 justify-center items-center shadow-sm z-20" style={{ elevation: 2 }}>
-        <View className="mx-2">
-          <TouchableOpacity 
-            className={activeTab === 'Timer' ? 'bg-brand-accent px-6 py-2.5 rounded-full items-center justify-center min-w-[120px]' : 'px-6 py-2.5 items-center justify-center min-w-[120px]'}
-            style={activeTab === 'Timer' ? { shadowColor: '#826BF0', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.39, shadowRadius: 14, elevation: 8 } : {}}
-            onPress={() => setActiveTab('Timer')}
-          >
-            <Text className={activeTab === 'Timer' ? 'text-white text-sm font-semibold text-center' : 'text-brand-accent text-sm font-medium text-center'}>Timer</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View className="mx-2">
-          <TouchableOpacity 
-            className={activeTab === 'estadisticas' ? 'bg-brand-accent px-6 py-2.5 rounded-full items-center justify-center min-w-[120px]' : 'px-6 py-2.5 items-center justify-center min-w-[120px]'}
-            style={activeTab === 'estadisticas' ? { shadowColor: '#826BF0', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.39, shadowRadius: 14, elevation: 8 } : {}}
-            onPress={() => setActiveTab('estadisticas')}
-          >
-            <Text className={activeTab === 'estadisticas' ? 'text-white text-sm font-semibold text-center' : 'text-brand-accent text-sm font-medium text-center'}>Estadísticas</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Main Content / Task List */}
-      <ScrollView contentContainerClassName="p-6 pb-[120px]" showsVerticalScrollIndicator={false}>
-        {subjects.map((subject) => {
-          const isActive = activeSubjectId === subject.id;
-          return (
-            <TaskCard 
-              key={subject.id} 
-              name={subject.name} 
-              time={isActive ? formatTime(timerSeconds) : '00:00:00'} 
-              active={isActive}
-              color={subject.color}
-              onPress={() => toggleTimer(subject.id)}
-              onEdit={() => router.push({ pathname: '/add-subject', params: { id: subject.id } })}
-              onDelete={() => {
-                Alert.alert('Eliminar Materia', '¿Estás seguro de que quieres eliminar esta materia?', [
-                  { text: 'Cancelar', style: 'cancel' },
-                  { text: 'Eliminar', style: 'destructive', onPress: async () => {
-                      const { error } = await supabase.from('subjects').delete().eq('id', subject.id);
-                      if (!error) {
-                        setSubjects(s => s.filter(x => x.id !== subject.id));
-                        if (activeSubjectId === subject.id) {
-                          setActiveSubjectId(null);
-                          setTimerSeconds(0);
+        {subjects.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
+            <Text style={{ fontSize: 32 }}>📚</Text>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: '#191C1E' }}>Sin materias aún</Text>
+            <Text style={{ fontSize: 13, color: '#7B7486', textAlign: 'center' }}>
+              Agregá tu primera materia para empezar a estudiar
+            </Text>
+          </View>
+        ) : (
+          subjects.map((subject) => {
+            const isActive = activeSubjectId === subject.id;
+            return (
+              <TaskCard
+                key={subject.id}
+                name={subject.name}
+                time={isActive ? formatTime(timerSeconds) : '00:00:00'}
+                active={isActive}
+                color={subject.color}
+                onPress={() => toggleTimer(subject.id)}
+                onEdit={() => router.push({ pathname: '/add-subject', params: { id: subject.id } })}
+                onDelete={() => {
+                  Alert.alert('Eliminar Materia', '¿Estás seguro?', [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Eliminar', style: 'destructive', onPress: async () => {
+                        const { error } = await supabase.from('subjects').delete().eq('id', subject.id);
+                        if (!error) {
+                          setSubjects(s => s.filter(x => x.id !== subject.id));
+                          if (activeSubjectId === subject.id) { setActiveSubjectId(null); setTimerSeconds(0); }
                         }
-                      } else {
-                        console.error('Error deleting subject:', error);
                       }
-                    } 
-                  }
-                ]);
-              }}
-            />
-          );
-        })}
+                    }
+                  ]);
+                }}
+              />
+            );
+          })
+        )}
 
-        {/* Action Buttons */}
-        <View className="flex-row gap-4 pt-8">
-          <TouchableOpacity 
-            className="flex-1 py-3 px-4 border border-brand-accent/20 bg-white/50 rounded-[20px] flex-row items-center justify-center"
-            onPress={() => router.push('/add-subject')}
-          >
-            <Text className="text-lg text-brand-accent mr-2 font-medium">+</Text>
-            <Text className="text-base text-brand-accent font-medium">Subject</Text>
-          </TouchableOpacity>
-          <TouchableOpacity className="flex-1 py-3 px-4 border border-brand-accent/20 bg-white/50 rounded-[20px] flex-row items-center justify-center">
-            <Text className="text-lg text-brand-accent mr-2 font-medium">+</Text>
-            <Text className="text-base text-brand-accent font-medium">To-do</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Action button */}
+        <TouchableOpacity
+          style={{ paddingVertical: 14, paddingHorizontal: 24, borderWidth: 1.5, borderColor: 'rgba(130,107,240,0.2)', backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          onPress={() => router.push('/add-subject')}
+        >
+          <Text style={{ fontSize: 20, color: '#826BF0', lineHeight: 22 }}>+</Text>
+          <Text style={{ fontSize: 15, color: '#826BF0', fontWeight: '600' }}>Nueva materia</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );

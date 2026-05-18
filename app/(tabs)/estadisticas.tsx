@@ -7,41 +7,78 @@ import dayjs from 'dayjs';
 import { getAllStatisticsData } from '@/services/statisticsService';
 import { adaptStatisticsData } from '@/utils/statisticsAdapter';
 
-// Import refactored widgets
 import CalendarWidget from '@/components/statistics/CalendarWidget';
 import StatsChartWidget from '@/components/statistics/StatsChartWidget';
 import DonutChartsWidget from '@/components/statistics/DonutChartsWidget';
 import HistoryList from '@/components/statistics/HistoryList';
 
+type TabType = 'Day' | 'Week' | 'Month' | 'Trend';
+
+function getDateRange(tab: TabType): { startDate: string; endDate: string; targetDate: string; periodType: 'day' | 'week' | 'month' | 'trend' } {
+  const today = dayjs();
+  switch (tab) {
+    case 'Day':
+      return {
+        startDate: today.startOf('day').toISOString(),
+        endDate: today.endOf('day').toISOString(),
+        targetDate: today.format('YYYY-MM-DD'),
+        periodType: 'day',
+      };
+    case 'Week':
+      return {
+        startDate: today.startOf('week').toISOString(),
+        endDate: today.endOf('week').toISOString(),
+        targetDate: today.format('YYYY-MM-DD'),
+        periodType: 'week',
+      };
+    case 'Month':
+      return {
+        startDate: today.startOf('month').toISOString(),
+        endDate: today.endOf('month').toISOString(),
+        targetDate: today.format('YYYY-MM-DD'),
+        periodType: 'month',
+      };
+    case 'Trend':
+      return {
+        startDate: today.subtract(30, 'day').startOf('day').toISOString(),
+        endDate: today.endOf('day').toISOString(),
+        targetDate: today.format('YYYY-MM-DD'),
+        periodType: 'trend',
+      };
+  }
+}
+
 export default function EstadisticasScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statsData, setStatsData] = useState<any>(null);
+  const [selectedTab, setSelectedTab] = useState<TabType>('Month');
 
   useFocusEffect(
     useCallback(() => {
-      fetchData();
+      fetchData(selectedTab);
     }, [])
   );
 
-  const fetchData = async () => {
+  const fetchData = async (tab: TabType) => {
     try {
       setLoading(true);
       setError(null);
-      // Fetch data for the current month
-      const targetDate = dayjs().format('YYYY-MM-DD');
-      const startDate = dayjs(targetDate).startOf('month').toISOString();
-      const endDate = dayjs(targetDate).endOf('month').toISOString();
-      
+      const { startDate, endDate, targetDate, periodType } = getDateRange(tab);
       const rawData = await getAllStatisticsData(startDate, endDate);
-      const adapted = adaptStatisticsData(rawData, targetDate);
+      const adapted = adaptStatisticsData(rawData, targetDate, periodType);
       setStatsData(adapted);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error fetching statistics');
+      setError(err.message || 'Error al cargar estadísticas');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTabPress = (tab: TabType) => {
+    setSelectedTab(tab);
+    fetchData(tab);
   };
 
   if (loading) {
@@ -55,52 +92,42 @@ export default function EstadisticasScreen() {
   if (error || !statsData) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F4F9', justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: 'red' }}>{error}</Text>
-        <TouchableOpacity onPress={fetchData} style={{ marginTop: 16, padding: 10, backgroundColor: '#A594F9', borderRadius: 8 }}>
+        <Text style={{ color: 'red', marginBottom: 8 }}>{error}</Text>
+        <TouchableOpacity onPress={() => fetchData(selectedTab)} style={{ padding: 10, backgroundColor: '#A594F9', borderRadius: 8 }}>
           <Text style={{ color: 'white' }}>Reintentar</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  const { calendar, summary, distribution, sessionDetail, history } = statsData;
+  const { calendar, summary, distribution, history } = statsData;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F4F9' }} edges={['top']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Top Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>estadísticas.</Text>
         </View>
 
-        {/* Tab Navigation */}
         <View style={styles.tabNav}>
-          {['Day', 'Week', 'Month', 'Trend'].map((tab, idx) => (
+          {(['Day', 'Week', 'Month', 'Trend'] as TabType[]).map((tab) => (
             <TouchableOpacity
-              key={idx}
-              style={[
-                styles.tabButton,
-                idx === 0 && styles.tabButtonActive
-              ]}
+              key={tab}
+              style={[styles.tabButton, selectedTab === tab && styles.tabButtonActive]}
+              onPress={() => handleTabPress(tab)}
             >
-              <Text style={[styles.tabText, idx === 0 && styles.tabTextActive]}>
+              <Text style={[styles.tabText, selectedTab === tab && styles.tabTextActive]}>
                 {tab}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Main Content */}
         <View style={styles.mainContent}>
-          
-          <View style={styles.gridContainer}>
-            <CalendarWidget calendarData={calendar} />
-            <StatsChartWidget summary={summary} />
-            <DonutChartsWidget distribution={distribution} />
-          </View>
-
+          <CalendarWidget calendarData={calendar} />
+          <StatsChartWidget summary={summary} />
+          <DonutChartsWidget distribution={distribution} />
           <HistoryList history={history} />
-
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -128,7 +155,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   tabButton: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 6,
     borderRadius: 20,
   },
@@ -145,10 +172,6 @@ const styles = StyleSheet.create({
   },
   mainContent: {
     paddingHorizontal: 16,
-    gap: 16,
-  },
-  gridContainer: {
-    flexDirection: 'column',
     gap: 16,
   },
 });

@@ -16,7 +16,7 @@ export default function StatsChartWidget({ summary }: any) {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.statsDate}>lun., 27 abr.</Text>
+      <Text style={styles.statsDate}>{summary.dateLabel}</Text>
       
       <View style={styles.statsGrid}>
         <View style={styles.statsItem}>

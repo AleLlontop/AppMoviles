@@ -60,7 +60,7 @@ export default function AddSubjectScreen() {
 
     try {
       setLoading(true);
-      
+
       if (id) {
         const { error } = await supabase
           .from('subjects')
@@ -68,12 +68,13 @@ export default function AddSubjectScreen() {
           .eq('id', id);
         if (error) throw error;
       } else {
+        const { data: { user } } = await supabase.auth.getUser();
         const { error } = await supabase
           .from('subjects')
-          .insert([{ name: name.trim(), color }]);
+          .insert([{ name: name.trim(), color, user_id: user?.id ?? null }]);
         if (error) throw error;
       }
-      
+
       router.back();
     } catch (err: any) {
       setAlertMessage(err.message || 'Error al guardar');

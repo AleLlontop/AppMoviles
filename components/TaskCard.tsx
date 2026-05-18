@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Platform, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -14,125 +14,83 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ name, time, active, color, onPress, onEdit, onDelete }: TaskCardProps) {
-  const brandColor = color || '#826BF0';
-  const lightBg = `${brandColor}15`; // 15 opacity in hex
   const [modalVisible, setModalVisible] = useState(false);
-
-  const handleOptions = () => {
-    setModalVisible(true);
-  };
+  const initial = name.trim()[0]?.toUpperCase() ?? '?';
+  const subjectColor = color || '#826BF0';
 
   return (
     <>
-      <View 
-        className={`rounded-[24px] p-4 flex-row items-center justify-between mb-4 border ${active ? 'bg-white/90' : 'border-white bg-white/80'}`}
-        style={[
-          { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 2 },
-          active && { borderColor: brandColor, borderWidth: 1 }
-        ]}
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.82}
+        style={[styles.card, active && styles.cardActive]}
       >
-        <TouchableOpacity onPress={onPress} className="flex-row items-center flex-1">
-          {active ? (
-            <LinearGradient
-              colors={[brandColor, brandColor]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: 16,
-                shadowColor: brandColor,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.4,
-                shadowRadius: 10,
-                elevation: 5
-              }}
-            >
-              <Ionicons name="square" size={16} color="white" />
-            </LinearGradient>
-          ) : (
-            <View 
-              className="w-12 h-12 rounded-2xl items-center justify-center mr-4"
-              style={{ backgroundColor: lightBg }}
-            >
-              <Ionicons name="play" size={20} color={brandColor} />
+        {active ? (
+          <LinearGradient
+            colors={['#A799E7', '#826BF0']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.iconActive}
+          >
+            <Text style={styles.iconTextActive}>{initial}</Text>
+          </LinearGradient>
+        ) : (
+          <View style={[styles.iconInactive, { borderColor: `${subjectColor}55` }]}>
+            <Text style={[styles.iconTextInactive, { color: subjectColor }]}>{initial}</Text>
+          </View>
+        )}
+
+        <Text style={[styles.name, active && styles.nameActive]} numberOfLines={1}>
+          {name}
+        </Text>
+
+        <Text style={[styles.time, active && styles.timeActive]}>{time}</Text>
+
+        {(onEdit || onDelete) && (
+          <TouchableOpacity
+            onPress={() => setModalVisible(true)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ marginLeft: 8 }}
+          >
+            <Ionicons name="ellipsis-vertical" size={16} color={active ? '#9CA3AF' : '#C4BED4'} />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+
+      <Modal transparent visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <View style={[styles.sheetDot, { backgroundColor: subjectColor }]} />
+              <View>
+                <Text style={styles.sheetTitle}>{name}</Text>
+                <Text style={styles.sheetSub}>¿Qué deseas hacer?</Text>
+              </View>
             </View>
-          )}
-          <Text className={`text-lg flex-1 ${active ? 'font-semibold text-slate-800' : 'font-medium text-slate-700'}`} numberOfLines={1}>
-            {name}
-          </Text>
-        </TouchableOpacity>
-
-        <View className="flex-row items-center">
-          <Text 
-            className={`font-mono mr-2 ${active ? 'text-slate-500 font-semibold' : 'text-slate-400'}`}
-            style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}
-          >
-            {time}
-          </Text>
-          
-          {(onEdit || onDelete) && (
-            <TouchableOpacity onPress={handleOptions} className="p-2 ml-1">
-              <Ionicons name="ellipsis-vertical" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      <Modal
-        transparent={true}
-        visible={modalVisible}
-        animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <TouchableOpacity 
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} 
-          activeOpacity={1} 
-          onPress={() => setModalVisible(false)}
-        >
-          <View 
-            className="bg-white w-[85%] rounded-[32px] p-6 items-center" 
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 }}
-          >
-            <View className="w-12 h-1.5 bg-gray-200 rounded-full mb-6" />
-            
-            <Text className="text-xl font-bold text-slate-800 mb-2 text-center">{name}</Text>
-            <Text className="text-sm text-slate-500 mb-8 text-center">¿Qué deseas hacer con esta materia?</Text>
 
             {onEdit && (
-              <TouchableOpacity 
-                className="w-full bg-[#826BF0]/10 py-4 rounded-[20px] flex-row justify-center items-center mb-3"
-                onPress={() => {
-                  setModalVisible(false);
-                  onEdit();
-                }}
-              >
-                <Ionicons name="pencil" size={20} color="#826BF0" />
-                <Text className="text-[#826BF0] font-semibold text-base ml-2">Editar materia</Text>
+              <TouchableOpacity style={styles.sheetBtn} onPress={() => { setModalVisible(false); onEdit(); }}>
+                <View style={styles.sheetBtnIcon}>
+                  <Ionicons name="pencil" size={18} color="#826BF0" />
+                </View>
+                <Text style={styles.sheetBtnText}>Editar materia</Text>
+                <Ionicons name="chevron-forward" size={16} color="#7B7486" />
               </TouchableOpacity>
             )}
 
             {onDelete && (
-              <TouchableOpacity 
-                className="w-full bg-red-50 py-4 rounded-[20px] flex-row justify-center items-center mb-6"
-                onPress={() => {
-                  setModalVisible(false);
-                  onDelete();
-                }}
-              >
-                <Ionicons name="trash" size={20} color="#EF4444" />
-                <Text className="text-red-500 font-semibold text-base ml-2">Eliminar materia</Text>
+              <TouchableOpacity style={[styles.sheetBtn, styles.sheetBtnRed]} onPress={() => { setModalVisible(false); onDelete(); }}>
+                <View style={[styles.sheetBtnIcon, { backgroundColor: '#FEF2F2' }]}>
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </View>
+                <Text style={[styles.sheetBtnText, { color: '#EF4444' }]}>Eliminar materia</Text>
+                <Ionicons name="chevron-forward" size={16} color="#EF4444" />
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity 
-              className="w-full py-2 rounded-2xl flex-row justify-center items-center"
-              onPress={() => setModalVisible(false)}
-            >
-              <Text className="text-slate-400 font-medium text-base">Cancelar</Text>
+            <TouchableOpacity style={styles.sheetCancel} onPress={() => setModalVisible(false)}>
+              <Text style={styles.sheetCancelText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -140,3 +98,158 @@ export function TaskCard({ name, time, active, color, onPress, onEdit, onDelete 
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
+  },
+  cardActive: {
+    borderWidth: 1.5,
+    borderColor: '#826BF0',
+    shadowColor: '#826BF0',
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  iconInactive: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  iconActive: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    shadowColor: '#826BF0',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  iconTextActive: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  iconTextInactive: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  name: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  nameActive: {
+    fontWeight: '700',
+    color: '#191C1E',
+  },
+  time: {
+    fontSize: 12,
+    color: '#C4BED4',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginLeft: 8,
+  },
+  timeActive: {
+    color: '#826BF0',
+    fontWeight: '700',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(25,28,30,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
+    gap: 10,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginBottom: 4,
+  },
+  sheetDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  sheetTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#191C1E',
+  },
+  sheetSub: {
+    fontSize: 13,
+    color: '#7B7486',
+    marginTop: 1,
+  },
+  sheetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#F8F9FE',
+    borderRadius: 18,
+    padding: 16,
+  },
+  sheetBtnRed: { backgroundColor: '#FEF2F2' },
+  sheetBtnIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetBtnText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#191C1E',
+  },
+  sheetCancel: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 2,
+  },
+  sheetCancelText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#7B7486',
+  },
+});
