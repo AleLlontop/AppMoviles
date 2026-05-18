@@ -6,17 +6,18 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/utils/supabase';
 import { useUser } from '@/hooks/use-user';
+import { useAppStore } from '@/store/useAppStore';
+import { useThemeColors } from '@/hooks/use-theme-colors';
 
 export default function HomeScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('Timer');
   const user = useUser();
   const userId = user?.id ?? null;
+  const c = useThemeColors();
 
   const [subjects, setSubjects] = useState<any[]>([]);
-  const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  const { activeSubjectId, timerSeconds, sessionStartTime, startTimer, stopTimer, tick } = useAppStore();
 
   useFocusEffect(
     useCallback(() => {
@@ -38,15 +39,9 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (activeSubjectId) {
-      interval = setInterval(() => {
-        setTimerSeconds(s => s + 1);
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    if (!activeSubjectId) return;
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
   }, [activeSubjectId]);
 
   const saveSession = async (subjectId: string, start: Date, durationSeconds: number) => {
@@ -81,22 +76,17 @@ export default function HomeScreen() {
 
   const toggleTimer = async (subjectId: string) => {
     if (activeSubjectId === subjectId) {
-      setActiveSubjectId(null);
-      setTimerSeconds(0);
-
       if (sessionStartTime) {
-        const duration = Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000);
-        await saveSession(subjectId, sessionStartTime, duration);
+        const duration = Math.floor((new Date().getTime() - new Date(sessionStartTime).getTime()) / 1000);
+        await saveSession(subjectId, new Date(sessionStartTime), duration);
       }
+      stopTimer();
     } else {
       if (activeSubjectId && sessionStartTime) {
-        const duration = Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000);
-        await saveSession(activeSubjectId, sessionStartTime, duration);
+        const duration = Math.floor((new Date().getTime() - new Date(sessionStartTime).getTime()) / 1000);
+        await saveSession(activeSubjectId, new Date(sessionStartTime), duration);
       }
-
-      setActiveSubjectId(subjectId);
-      setTimerSeconds(0);
-      setSessionStartTime(new Date());
+      startTimer(subjectId);
     }
   };
 
@@ -118,9 +108,9 @@ export default function HomeScreen() {
     ?? null;
 
   return (
-    <View className="flex-1 bg-brand-light">
+    <View className="flex-1" style={{ backgroundColor: c.background }}>
       {/* Timer header */}
-      <View className="h-[300px] bg-brand-lavender items-center justify-center relative overflow-hidden">
+      <View className="h-[300px] items-center justify-center relative overflow-hidden" style={{ backgroundColor: c.timerHeader }}>
         <LinearGradient
           colors={['rgba(255,255,255,0.12)', 'transparent']}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -142,7 +132,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Tab nav */}
-      <View className="flex-row bg-white py-4 justify-center items-center shadow-sm z-20" style={{ elevation: 2 }}>
+      <View className="flex-row py-4 justify-center items-center shadow-sm z-20" style={{ backgroundColor: c.surface, elevation: 2 }}>
         {(['Timer', 'Estadísticas'] as const).map(tab => (
           <View key={tab} className="mx-2">
             <TouchableOpacity
@@ -166,7 +156,7 @@ export default function HomeScreen() {
 
         {/* Section header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#7B7486', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: c.textSecondary, letterSpacing: 0.8, textTransform: 'uppercase' }}>
             Materias · {subjects.length}
           </Text>
         </View>
@@ -174,8 +164,8 @@ export default function HomeScreen() {
         {subjects.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
             <Text style={{ fontSize: 32 }}>📚</Text>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: '#191C1E' }}>Sin materias aún</Text>
-            <Text style={{ fontSize: 13, color: '#7B7486', textAlign: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: c.textPrimary }}>Sin materias aún</Text>
+            <Text style={{ fontSize: 13, color: c.textSecondary, textAlign: 'center' }}>
               Agregá tu primera materia para empezar a estudiar
             </Text>
           </View>
@@ -199,7 +189,7 @@ export default function HomeScreen() {
                         const { error } = await supabase.from('subjects').delete().eq('id', subject.id);
                         if (!error) {
                           setSubjects(s => s.filter(x => x.id !== subject.id));
-                          if (activeSubjectId === subject.id) { setActiveSubjectId(null); setTimerSeconds(0); }
+                          if (activeSubjectId === subject.id) { stopTimer(); }
                         }
                       }
                     }

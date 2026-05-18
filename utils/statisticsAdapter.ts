@@ -6,7 +6,7 @@ dayjs.locale('es');
 export const adaptStatisticsData = (
   rawData: any,
   targetDateString: string,
-  periodType: 'day' | 'week' | 'month' | 'trend' = 'month'
+  periodType: 'day' | 'week' | 'month' = 'month'
 ) => {
   const { sessions } = rawData;
   const targetDate = dayjs(targetDateString);
@@ -19,9 +19,7 @@ export const adaptStatisticsData = (
   });
 
   const activityDays = [];
-  const calendarMonth = periodType === 'trend'
-    ? targetDate
-    : targetDate;
+  const calendarMonth = targetDate;
   const daysInMonth = calendarMonth.daysInMonth();
 
   for (let i = 1; i <= daysInMonth; i++) {
