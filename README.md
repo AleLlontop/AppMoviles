@@ -1,50 +1,99 @@
-# Welcome to your Expo app 👋
+# time-lab.
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicación móvil de cronómetro de estudio con soporte offline-first, estadísticas y seguimiento de concentración. Desarrollada con Expo + React Native y Supabase como backend.
 
-## Get started
+---
 
-1. Install dependencies
+## Requisitos previos
+
+Antes de comenzar asegurate de tener instalado:
+
+- [Node.js](https://nodejs.org/) v18 o superior
+- [npm](https://www.npmjs.com/) v9 o superior
+- [Expo Go](https://expo.dev/go) en tu dispositivo físico, **o** un emulador configurado:
+  - Android: [Android Studio + emulador](https://docs.expo.dev/workflow/android-studio-emulator/)
+  - iOS: [Xcode + simulador](https://docs.expo.dev/workflow/ios-simulator/) *(solo macOS)*
+
+---
+
+## Configuración del entorno
+
+1. Cloná el repositorio:
+
+   ```bash
+   git clone <url-del-repositorio>
+   cd time-lab
+   ```
+
+2. Creá el archivo `.env` en la raíz del proyecto con las credenciales de Supabase:
+
+   ```bash
+   EXPO_PUBLIC_SUPABASE_URL=tu_supabase_url
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=tu_supabase_anon_key
+   ```
+
+   > Podés obtener estos valores desde el panel de tu proyecto en [supabase.com](https://supabase.com) → Settings → API.
+
+3. Instalá las dependencias:
 
    ```bash
    npm install
    ```
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Ejecutar el proyecto
 
 ```bash
-npm run reset-project
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Una vez iniciado el servidor, escaneá el QR con la app **Expo Go** desde tu dispositivo, o presioná:
 
-## Learn more
+| Tecla | Acción |
+|-------|--------|
+| `a` | Abrir en emulador Android |
+| `i` | Abrir en simulador iOS |
+| `w` | Abrir en navegador web |
+| `r` | Recargar la app |
 
-To learn more about developing your project with Expo, look at the following resources:
+---
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Estructura del proyecto
 
-## Join the community
+```
+time-lab/
+├── app/                  # Pantallas y navegación (Expo Router)
+│   ├── (tabs)/           # Navegación por tabs
+│   │   ├── index.tsx     # Pantalla principal con cronómetro
+│   │   ├── estadisticas.tsx
+│   │   └── more.tsx      # Configuración y perfil
+│   ├── login.tsx
+│   └── add-subject.tsx
+├── components/           # Componentes reutilizables
+├── hooks/                # Hooks personalizados
+│   ├── use-network-sync.ts  # Sync offline con NetInfo
+│   └── use-focus-guard.ts   # Monitor de concentración
+├── store/
+│   └── useAppStore.ts    # Estado global con Zustand
+├── services/             # Llamadas a Supabase
+├── utils/
+│   ├── supabase.ts
+│   └── network.ts        # Helper de detección de errores de red
 
-Join our community of developers creating universal apps.
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+---
+
+## Tecnologías principales
+
+| Tecnología | Uso |
+|------------|-----|
+| Expo 54 + React Native | Framework principal |
+| Expo Router | Navegación basada en archivos |
+| Supabase | Autenticación y base de datos |
+| Zustand + AsyncStorage | Estado global y persistencia offline |
+| NativeWind | Estilos con Tailwind CSS |
+| NetInfo | Detección de conectividad en tiempo real |
+
+---
