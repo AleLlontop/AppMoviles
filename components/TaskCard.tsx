@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useThemeColors } from '@/hooks/use-theme-colors';
 
 interface TaskCardProps {
   name: string;
@@ -15,6 +16,7 @@ interface TaskCardProps {
 
 export function TaskCard({ name, time, active, color, onPress, onEdit, onDelete }: TaskCardProps) {
   const [modalVisible, setModalVisible] = useState(false);
+  const colors = useThemeColors();
   const initial = name.trim()[0]?.toUpperCase() ?? '?';
   const subjectColor = color || '#826BF0';
 
@@ -58,24 +60,24 @@ export function TaskCard({ name, time, active, color, onPress, onEdit, onDelete 
       </TouchableOpacity>
 
       <Modal transparent visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHandle} />
+        <TouchableOpacity style={[styles.overlay, { backgroundColor: colors.modalOverlay }]} activeOpacity={1} onPress={() => setModalVisible(false)}>
+          <View style={[styles.sheet, { backgroundColor: colors.modalBg }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.handle }]} />
             <View style={styles.sheetHeader}>
               <View style={[styles.sheetDot, { backgroundColor: subjectColor }]} />
               <View>
-                <Text style={styles.sheetTitle}>{name}</Text>
-                <Text style={styles.sheetSub}>¿Qué deseas hacer?</Text>
+                <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>{name}</Text>
+                <Text style={[styles.sheetSub, { color: colors.textSecondary }]}>¿Qué deseas hacer?</Text>
               </View>
             </View>
 
             {onEdit && (
-              <TouchableOpacity style={styles.sheetBtn} onPress={() => { setModalVisible(false); onEdit(); }}>
+              <TouchableOpacity style={[styles.sheetBtn, { backgroundColor: colors.separator }]} onPress={() => { setModalVisible(false); onEdit(); }}>
                 <View style={styles.sheetBtnIcon}>
                   <Ionicons name="pencil" size={18} color="#826BF0" />
                 </View>
-                <Text style={styles.sheetBtnText}>Editar materia</Text>
-                <Ionicons name="chevron-forward" size={16} color="#7B7486" />
+                <Text style={[styles.sheetBtnText, { color: colors.textPrimary }]}>Editar materia</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
 
@@ -90,7 +92,7 @@ export function TaskCard({ name, time, active, color, onPress, onEdit, onDelete 
             )}
 
             <TouchableOpacity style={styles.sheetCancel} onPress={() => setModalVisible(false)}>
-              <Text style={styles.sheetCancelText}>Cancelar</Text>
+              <Text style={[styles.sheetCancelText, { color: colors.textSecondary }]}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
