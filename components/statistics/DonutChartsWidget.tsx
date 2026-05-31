@@ -5,7 +5,7 @@ import { useThemeColors } from '@/hooks/use-theme-colors';
 
 export default function DonutChartsWidget({ distribution }: any) {
   const c = useThemeColors();
-  const subjectsData = distribution.techniques || [];
+  const subjectsData = distribution.subjects || [];
 
   const pieData = subjectsData
     .map((s: any) => ({ value: s.percentage > 0 ? s.percentage : 0, color: s.color || '#A594F9' }))

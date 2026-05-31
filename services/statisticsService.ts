@@ -6,16 +6,10 @@ export const getSubjects = async () => {
   return data || [];
 };
 
-export const getTechniques = async () => {
-  const { data, error } = await supabase.from('techniques').select('*');
-  if (error) throw error;
-  return data || [];
-};
-
 export const getStudySessions = async (startDate: string, endDate: string) => {
   const { data, error } = await supabase
     .from('study_sessions')
-    .select('*, subjects(*), techniques(*)')
+    .select('*, subjects(*)')
     .gte('start_time', startDate)
     .lte('start_time', endDate)
     .order('start_time', { ascending: true });
@@ -24,11 +18,10 @@ export const getStudySessions = async (startDate: string, endDate: string) => {
 };
 
 export const getAllStatisticsData = async (startDate: string, endDate: string) => {
-  const [subjects, techniques, sessions] = await Promise.all([
+  const [subjects, sessions] = await Promise.all([
     getSubjects(),
-    getTechniques(),
-    getStudySessions(startDate, endDate)
+    getStudySessions(startDate, endDate),
   ]);
 
-  return { subjects, techniques, sessions };
+  return { subjects, sessions };
 };

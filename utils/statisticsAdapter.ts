@@ -97,8 +97,8 @@ export const adaptStatisticsData = (
 
   periodSessions.forEach((s: any) => {
     const duration = s.duration || 0;
-    const groupKey = s.techniques?.name || s.subjects?.name || 'No category';
-    const groupColor = s.techniques?.color || s.subjects?.color || '#A594F9';
+    const groupKey = s.subjects?.name || 'No category';
+    const groupColor = s.subjects?.color || '#A594F9';
 
     if (!techMap[groupKey]) {
       techMap[groupKey] = { time: 0, color: groupColor };
@@ -113,7 +113,7 @@ export const adaptStatisticsData = (
   const totalCatTime = catMap.study.time + catMap.break.time + catMap.other.time || 1;
 
   const distribution = {
-    techniques: Object.entries(techMap).map(([name, data]) => ({
+    subjects: Object.entries(techMap).map(([name, data]) => ({
       name,
       timeFormatted: formatHMS(data.time),
       percentage: Math.round((data.time / totalTechTime) * 100),
@@ -141,8 +141,8 @@ export const adaptStatisticsData = (
   const history: any[] = periodSessions.map((s: any) => ({
     type: 'session',
     time: dayjs(s.start_time).format('HH:mm'),
-    name: s.techniques?.name || s.subjects?.name || 'Sesión',
-    color: s.techniques?.color || s.subjects?.color || '#A594F9',
+    name: s.subjects?.name || 'Sesión',
+    color: s.subjects?.color || '#A594F9',
     durationSeconds: s.duration || 0,
     timeRange: `${dayjs(s.start_time).format('HH:mm')} ~ ${dayjs(s.end_time || s.start_time).format('HH:mm')}`,
   }));
