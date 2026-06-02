@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 
@@ -21,7 +21,7 @@ function getLegendTextColor(index: number) {
   return colors[index] || colors[0];
 }
 
-export default function CalendarWidget({ calendarData }: any) {
+export default function CalendarWidget({ calendarData, onMonthChange, onDayPress, selectedTab }: any) {
   const c = useThemeColors();
 
   const activityMap: Record<string, any> = {};
@@ -29,14 +29,23 @@ export default function CalendarWidget({ calendarData }: any) {
     if (d.date) activityMap[d.date] = d;
   });
 
+  const showDayHint = selectedTab === 'Week' || selectedTab === 'Day';
+
   return (
     <View style={[styles.card, { backgroundColor: c.surface }]}>
+      {showDayHint && (
+        <Text style={[styles.hint, { color: c.textSecondary }]}>
+          {selectedTab === 'Week' ? 'Tocá un día para ver esa semana' : 'Tocá un día para ver ese día'}
+        </Text>
+      )}
       <Calendar
         current={calendarData.selectedDate}
         maxDate={new Date().toISOString().split('T')[0]}
         firstDay={1}
         hideExtraDays={true}
         monthFormat={'MMMM yyyy'}
+        onMonthChange={onMonthChange}
+        onDayPress={onDayPress}
         theme={{
           calendarBackground: c.surface,
           textSectionTitleColor: c.textSecondary,
@@ -60,19 +69,26 @@ export default function CalendarWidget({ calendarData }: any) {
           const isSelected = dateStr === calendarData.selectedDate;
           const level = dayData?.level;
           const hasData = level !== undefined && level !== null;
+          const isDisabled = state === 'disabled';
           const textColor = hasData
             ? (level === 4 ? '#FFF' : getLegendTextColor(level))
-            : (state === 'disabled' ? c.textSecondary : c.textPrimary);
+            : (isDisabled ? c.textSecondary : c.textPrimary);
 
           return (
-            <View style={[
-              styles.calendarCell,
-              hasData && { backgroundColor: getLegendColor(level), borderRadius: 6 },
-              isSelected && styles.calendarCellSelected,
-            ]}>
-              <Text style={[styles.calendarCellText, { color: textColor }]}>{date.day}</Text>
-              {dayData?.time && <Text style={[styles.calendarCellTime, { color: textColor }]}>{dayData.time}</Text>}
-            </View>
+            <TouchableOpacity
+              onPress={() => !isDisabled && onDayPress?.({ dateString: dateStr })}
+              disabled={isDisabled}
+              activeOpacity={onDayPress ? 0.6 : 1}
+            >
+              <View style={[
+                styles.calendarCell,
+                hasData && { backgroundColor: getLegendColor(level), borderRadius: 6 },
+                isSelected && styles.calendarCellSelected,
+              ]}>
+                <Text style={[styles.calendarCellText, { color: textColor }]}>{date.day}</Text>
+                {dayData?.time && <Text style={[styles.calendarCellTime, { color: textColor }]}>{dayData.time}</Text>}
+              </View>
+            </TouchableOpacity>
           );
         }}
       />
@@ -102,4 +118,5 @@ const styles = StyleSheet.create({
   legendBox: { paddingHorizontal: 2, borderRadius: 2 },
   legendText: { fontSize: 8 },
   calendarFooterText: { fontSize: 8 },
+  hint: { fontSize: 11, textAlign: 'center', marginBottom: 4, fontStyle: 'italic' },
 });

@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import dayjs from 'dayjs';
+import { useIsFocused } from '@react-navigation/native';
+import dayjs, { Dayjs } from 'dayjs';
 import 'dayjs/locale/es';
 
 import { getAllStatisticsData } from '@/services/statisticsService';
@@ -16,32 +16,37 @@ import { useThemeColors } from '@/hooks/use-theme-colors';
 
 type TabType = 'Day' | 'Week' | 'Month';
 
-function getDateRange(tab: TabType): { startDate: string; endDate: string; targetDate: string; periodType: 'day' | 'week' | 'month' } {
-  const today = dayjs();
-  switch (tab) {
-    case 'Day':
-      return { startDate: today.startOf('day').toISOString(), endDate: today.endOf('day').toISOString(), targetDate: today.format('YYYY-MM-DD'), periodType: 'day' };
-    case 'Week':
-      return { startDate: today.startOf('week').toISOString(), endDate: today.endOf('week').toISOString(), targetDate: today.format('YYYY-MM-DD'), periodType: 'week' };
-    case 'Month':
-      return { startDate: today.startOf('month').toISOString(), endDate: today.endOf('month').toISOString(), targetDate: today.format('YYYY-MM-DD'), periodType: 'month' };
-  }
+function getDateRange(tab: TabType, ref: Dayjs) {
+  const unit = tab === 'Day' ? 'day' : tab === 'Week' ? 'week' : 'month';
+  return {
+    startDate:  ref.startOf(unit).toISOString(),
+    endDate:    ref.endOf(unit).toISOString(),
+    targetDate: ref.format('YYYY-MM-DD'),
+    periodType: unit as 'day' | 'week' | 'month',
+  };
 }
 
 export default function EstadisticasScreen() {
   const c = useThemeColors();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [statsData, setStatsData] = useState<any>(null);
-  const [selectedTab, setSelectedTab] = useState<TabType>('Month');
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
+  const [statsData, setStatsData]       = useState<any>(null);
+  const [selectedTab, setSelectedTab]     = useState<TabType>('Month');
+  const [referenceDate, setReferenceDate] = useState<Dayjs>(dayjs());
+  const isFocused = useIsFocused();
 
-  useFocusEffect(useCallback(() => { fetchData(selectedTab); }, []));
+  // Corre cuando la pantalla gana foco O cuando cambia tab/fecha
+  useEffect(() => {
+    if (isFocused) {
+      fetchData(selectedTab, referenceDate);
+    }
+  }, [selectedTab, referenceDate, isFocused]);
 
-  const fetchData = async (tab: TabType) => {
+  const fetchData = async (tab: TabType, ref: Dayjs) => {
     try {
       setLoading(true);
       setError(null);
-      const { startDate, endDate, targetDate, periodType } = getDateRange(tab);
+      const { startDate, endDate, targetDate, periodType } = getDateRange(tab, ref);
       const rawData = await getAllStatisticsData(startDate, endDate);
       const adapted = adaptStatisticsData(rawData, targetDate, periodType);
       setStatsData(adapted);
@@ -50,6 +55,48 @@ export default function EstadisticasScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Flechas del calendario: solo cambian el mes visible.
+  // En Month tab recarga los datos. En Week/Day solo mueve el calendario
+  // sin cambiar los datos (el usuario toca un día para eso).
+  const handleMonthChange = (month: { year: number; month: number }) => {
+    if (selectedTab === 'Month') {
+      const newRef = dayjs().year(month.year).month(month.month - 1).date(1);
+      setReferenceDate(newRef);
+    }
+    // Week / Day: las flechas solo navegan el calendario visualmente,
+    // el usuario toca un día para seleccionar la semana o el día.
+  };
+
+  // Tap en un día del calendario: en Week → semana de ese día,
+  // en Day → ese día exacto. En Month no hace nada (las flechas ya lo manejan).
+  const handleDayPress = (day: { dateString: string }) => {
+    if (selectedTab === 'Month') return;
+    const newRef = dayjs(day.dateString);
+    setReferenceDate(newRef);
+  };
+
+  const handleTabChange = (tab: TabType) => {
+    setSelectedTab(tab);
+    setReferenceDate(dayjs()); // volver al período actual al cambiar tab
+  };
+
+  const formatTotal = (seconds: number) => {
+    if (!seconds || seconds === 0) return 'Sin sesiones';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
+
+  const getPeriodLabel = () => {
+    const isCurrent = referenceDate.isSame(dayjs(), selectedTab === 'Day' ? 'day' : selectedTab === 'Week' ? 'week' : 'month');
+    if (selectedTab === 'Day')   return isCurrent ? 'hoy' : referenceDate.locale('es').format('D [de] MMMM');
+    if (selectedTab === 'Week')  return isCurrent ? 'esta semana' : `sem. del ${referenceDate.startOf('week').format('D MMM')}`;
+    return isCurrent ? 'este mes' : referenceDate.locale('es').format('MMMM YYYY');
   };
 
   if (loading) {
@@ -64,7 +111,7 @@ export default function EstadisticasScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background, justifyContent: 'center', alignItems: 'center' }}>
         <Text style={{ color: 'red', marginBottom: 8 }}>{error}</Text>
-        <TouchableOpacity onPress={() => fetchData(selectedTab)} style={{ padding: 10, backgroundColor: '#A594F9', borderRadius: 8 }}>
+        <TouchableOpacity onPress={() => fetchData(selectedTab, referenceDate)} style={{ padding: 10, backgroundColor: '#A594F9', borderRadius: 8 }}>
           <Text style={{ color: 'white' }}>Reintentar</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -73,34 +120,31 @@ export default function EstadisticasScreen() {
 
   const { calendar, summary, distribution, history } = statsData;
 
-  const formatTotal = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
-    if (m > 0) return `${m}m`;
-    return 'Sin sesiones';
-  };
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.background }} edges={['top']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
 
+        {/* Header */}
         <View style={[styles.header, { backgroundColor: c.accent }]}>
           <Text style={styles.headerDate}>
-            {(() => { const d = dayjs().locale('es').format('dddd, D [de] MMMM'); return d.charAt(0).toUpperCase() + d.slice(1); })()}
+            {(() => {
+              const d = dayjs().locale('es').format('dddd, D [de] MMMM');
+              return d.charAt(0).toUpperCase() + d.slice(1);
+            })()}
           </Text>
           <Text style={styles.headerTitle}>Estadísticas</Text>
           <Text style={styles.headerSub}>
-            {formatTotal(summary.totalStudyTime)} · {selectedTab === 'Day' ? 'hoy' : selectedTab === 'Week' ? 'esta semana' : 'este mes'}
+            {formatTotal(summary.totalStudyTime)} · {getPeriodLabel()}
           </Text>
         </View>
 
+        {/* Tabs Day / Week / Month */}
         <View style={[styles.tabNav, { backgroundColor: c.surface }]}>
           {(['Day', 'Week', 'Month'] as TabType[]).map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[styles.tabButton, selectedTab === tab && styles.tabButtonActive]}
-              onPress={() => { setSelectedTab(tab); fetchData(tab); }}
+              onPress={() => handleTabChange(tab)}
             >
               <Text style={[styles.tabText, { color: c.textSecondary }, selectedTab === tab && styles.tabTextActive]}>
                 {tab}
@@ -109,8 +153,14 @@ export default function EstadisticasScreen() {
           ))}
         </View>
 
+        {/* Widgets — el calendario maneja su propia navegación con las flechas nativas */}
         <View style={styles.mainContent}>
-          <CalendarWidget calendarData={calendar} />
+          <CalendarWidget
+            calendarData={calendar}
+            onMonthChange={handleMonthChange}
+            onDayPress={handleDayPress}
+            selectedTab={selectedTab}
+          />
           <StatsChartWidget summary={summary} />
           <DonutChartsWidget distribution={distribution} />
           <HistoryList history={history} />
@@ -122,14 +172,14 @@ export default function EstadisticasScreen() {
 }
 
 const styles = StyleSheet.create({
-  header:        { paddingTop: 20, paddingBottom: 28, paddingHorizontal: 24 },
-  headerDate:    { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '500', letterSpacing: 0.3, marginBottom: 6 },
-  headerTitle:   { color: '#FFF', fontSize: 36, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
-  headerSub:     { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '500' },
-  tabNav:        { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16 },
-  tabButton:     { paddingHorizontal: 20, paddingVertical: 6, borderRadius: 20 },
-  tabButtonActive:{ backgroundColor: '#A594F9' },
-  tabText:       { fontSize: 14, fontWeight: '500' },
-  tabTextActive: { color: '#FFF' },
-  mainContent:   { paddingHorizontal: 16, gap: 16 },
+  header:          { paddingTop: 20, paddingBottom: 28, paddingHorizontal: 24 },
+  headerDate:      { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '500', letterSpacing: 0.3, marginBottom: 6 },
+  headerTitle:     { color: '#FFF', fontSize: 36, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
+  headerSub:       { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '500' },
+  tabNav:          { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16 },
+  tabButton:       { paddingHorizontal: 20, paddingVertical: 6, borderRadius: 20 },
+  tabButtonActive: { backgroundColor: '#A594F9' },
+  tabText:         { fontSize: 14, fontWeight: '500' },
+  tabTextActive:   { color: '#FFF' },
+  mainContent:     { paddingHorizontal: 16, gap: 16 },
 });

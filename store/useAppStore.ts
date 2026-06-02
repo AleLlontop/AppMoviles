@@ -32,6 +32,11 @@ interface AppStore {
   addInterruption: () => void;
   resetInterruptions: () => void;
 
+  // Modal de bienvenida (RF-02)
+  focusGuardModal: { visible: boolean; interruptions: number };
+  showFocusGuardModal: (interruptions: number) => void;
+  hideFocusGuardModal: () => void;
+
   // Cola offline (RNF-03)
   pendingQueue: PendingSession[];
   addPendingSession: (session: PendingSession) => void;
@@ -76,6 +81,12 @@ export const useAppStore = create<AppStore>()(
       interruptions: 0,
       addInterruption: () => set((s) => ({ interruptions: s.interruptions + 1 })),
       resetInterruptions: () => set({ interruptions: 0 }),
+
+      focusGuardModal: { visible: false, interruptions: 0 },
+      showFocusGuardModal: (interruptions) =>
+        set({ focusGuardModal: { visible: true, interruptions } }),
+      hideFocusGuardModal: () =>
+        set({ focusGuardModal: { visible: false, interruptions: 0 } }),
 
       pendingQueue: [],
       addPendingSession: (session) =>

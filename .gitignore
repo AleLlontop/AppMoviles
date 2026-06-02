@@ -68,3 +68,6 @@ supabase_migration.sql
 # Coverage
 coverage/
 .nyc_output/
+
+# Claude Code
+.claude/

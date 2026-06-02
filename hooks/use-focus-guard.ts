@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { AppState, Alert, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -38,12 +38,7 @@ export function useFocusGuard() {
 
         const current = useAppStore.getState();
         if (current.activeSubjectId && current.interruptions > 0) {
-          const n = current.interruptions;
-          Alert.alert(
-            '¡Bienvenido de vuelta! 💪',
-            `Llevas ${n} interrupción${n > 1 ? 'es' : ''} en esta sesión.\nCada minuto enfocado cuenta.`,
-            [{ text: 'Volver al estudio', style: 'default' }]
-          );
+          current.showFocusGuardModal(current.interruptions);
         }
       }
     });

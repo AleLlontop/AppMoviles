@@ -11,6 +11,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/utils/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { useFocusGuard } from '@/hooks/use-focus-guard';
+import FocusGuardModal from '@/components/FocusGuardModal';
 
 // Cuando la app está en primer plano y llega una notificación, no la mostramos
 // (no debería pasar, pero por seguridad)
@@ -81,6 +82,7 @@ export default function RootLayout() {
         <Stack.Screen name="add-subject" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="edit-nickname" options={{ presentation: 'modal', headerShown: false }} />
       </Stack>
+      <FocusGuardModal />
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );
