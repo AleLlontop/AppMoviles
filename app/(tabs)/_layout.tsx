@@ -59,6 +59,20 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} size={24} inactiveColor={c.textSecondary} />,
         }}
       />
+       <Tabs.Screen
+         name="dashboard"
+         options={{
+           title: 'Dashboard',
+           tabBarIcon: ({ focused }) => (
+             <TabIcon
+               name="grid"
+               focused={focused}
+               size={24}
+               inactiveColor={c.textSecondary}
+             />
+           ),
+         }}
+       />
       <Tabs.Screen
         name="group"
         options={{
