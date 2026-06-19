@@ -1,5 +1,27 @@
 import { supabase } from '@/utils/supabase';
 
+export type Group = {
+  id: string;
+  name: string;
+  invite_code: string;
+  created_by: string;
+  created_at: string;
+  max_members: number;
+};
+
+export type GroupMember = {
+  id: string;
+  group_id: string;
+  user_id: string;
+  role: 'owner' | 'admin' | 'member';
+  joined_at: string;
+  // Datos del profile (join)
+  nickname: string | null;
+  name: string | null;
+  avatar_url: string | null;
+  category: string | null;
+};
+
 const generateInviteCode = (): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from({ length: 6 }, () =>
@@ -38,52 +60,146 @@ export const createGroup = async (name: string, userId: string) => {
 
 export type JoinGroupError = 'invalid_code' | 'group_full' | 'already_member';
 
-export const joinGroup = async (inviteCode: string, userId: string): Promise<void> => {
-  const code = inviteCode.trim().toUpperCase();
+const JOIN_ERROR_NAMES: JoinGroupError[] = ['invalid_code', 'group_full', 'already_member'];
 
-  // Busca el grupo por código
-  const { data: group, error: groupError } = await supabase
-    .from('groups')
-    .select('id, max_members')
-    .eq('invite_code', code)
-    .maybeSingle();
+export const joinGroup = async (inviteCode: string, _userId?: string) => {
+  // Toda la validación (código, duplicado, capacidad) ocurre server-side en el
+  // RPC SECURITY DEFINER join_group_by_code. Esto evita que RLS bloquee la lectura
+  // del grupo a un usuario que todavía no es miembro.
+  const { data: group, error } = await supabase
+    .rpc('join_group_by_code', { p_code: inviteCode.trim().toUpperCase() })
+    .single();
 
-  if (groupError) throw groupError;
-  if (!group) {
-    const err = new Error('invalid_code');
-    err.name = 'invalid_code';
+  if (error) {
+    // El RPC lanza el código de error en error.message (invalid_code / group_full / already_member)
+    const matched = JOIN_ERROR_NAMES.find((name) => error.message.includes(name));
+    const err = new Error(matched ?? 'invalid_code');
+    err.name = matched ?? 'invalid_code';
     throw err;
   }
 
-  // Verifica si ya es miembro
-  const { data: membership } = await supabase
+  return group as Group;
+};
+
+export type MyGroup = Group & {
+  role: 'owner' | 'admin' | 'member';
+  member_count: number;
+};
+
+export const getMyGroups = async (userId: string): Promise<MyGroup[]> => {
+  // 1) Membresías del usuario con el grupo embebido (FK group_members.group_id → groups.id existe).
+  const { data: memberships, error: mErr } = await supabase
     .from('group_members')
-    .select('id')
-    .eq('group_id', group.id)
+    .select(`role, joined_at,
+             group:groups(id, name, invite_code, created_by, created_at, max_members)`)
     .eq('user_id', userId)
+    .order('joined_at', { ascending: false });
+
+  if (mErr) throw mErr;
+  if (!memberships || memberships.length === 0) return [];
+
+  // 2) Contar miembros por grupo en una sola query.
+  const groupIds = memberships
+    .map((m: any) => m.group?.id)
+    .filter((id: string | undefined): id is string => !!id);
+
+  const { data: countsRaw, error: cErr } = await supabase
+    .from('group_members')
+    .select('group_id')
+    .in('group_id', groupIds);
+
+  if (cErr) throw cErr;
+
+  const counts = new Map<string, number>();
+  (countsRaw ?? []).forEach((r: any) => {
+    counts.set(r.group_id, (counts.get(r.group_id) ?? 0) + 1);
+  });
+
+  return memberships
+    .filter((m: any) => m.group)
+    .map((m: any) => ({
+      ...m.group,
+      role: m.role,
+      member_count: counts.get(m.group.id) ?? 1,
+    }));
+};
+
+export const getGroup = async (groupId: string): Promise<Group | null> => {
+  const { data, error } = await supabase
+    .from('groups')
+    .select('id, name, invite_code, created_by, created_at, max_members')
+    .eq('id', groupId)
     .maybeSingle();
+  if (error) throw error;
+  return data;
+};
 
-  if (membership) {
-    const err = new Error('already_member');
-    err.name = 'already_member';
-    throw err;
-  }
+export const updateGroupName = async (groupId: string, name: string): Promise<void> => {
+  // RLS groups_owner_write deja UPDATE solo si created_by = auth.uid().
+  // El CHECK del esquema valida 3..50 chars.
+  const { error } = await supabase
+    .from('groups')
+    .update({ name: name.trim() })
+    .eq('id', groupId);
+  if (error) throw error;
+};
 
-  // Verifica capacidad
-  const { count } = await supabase
+export const leaveGroup = async (groupId: string, userId: string): Promise<void> => {
+  // RLS members_delete permite borrar la propia fila (user_id = auth.uid()).
+  const { error } = await supabase
     .from('group_members')
-    .select('id', { count: 'exact', head: true })
-    .eq('group_id', group.id);
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+};
 
-  if ((count ?? 0) >= group.max_members) {
-    const err = new Error('group_full');
-    err.name = 'group_full';
-    throw err;
-  }
+export const deleteGroup = async (groupId: string): Promise<void> => {
+  // RLS groups_owner_delete permite borrar solo si created_by = auth.uid().
+  // El ON DELETE CASCADE de group_members/group_activities los limpia solos.
+  const { error } = await supabase
+    .from('groups')
+    .delete()
+    .eq('id', groupId);
+  if (error) throw error;
+};
 
-  const { error: insertError } = await supabase
+export const getGroupMembers = async (groupId: string): Promise<GroupMember[]> => {
+  // No hay FK directa group_members → profiles (ambas apuntan a auth.users),
+  // así que el embed de PostgREST no funciona. Hago dos queries y joineo en el cliente.
+  // Con max 10 miembros por grupo el costo es despreciable.
+  const { data: members, error: membersErr } = await supabase
     .from('group_members')
-    .insert({ group_id: group.id, user_id: userId, role: 'member' });
+    .select('id, group_id, user_id, role, joined_at')
+    .eq('group_id', groupId)
+    .order('joined_at', { ascending: true });
 
-  if (insertError) throw insertError;
+  if (membersErr) throw membersErr;
+  if (!members || members.length === 0) return [];
+
+  const userIds = members.map((m: any) => m.user_id);
+  const { data: profiles, error: profilesErr } = await supabase
+    .from('profiles')
+    .select('user_id, nickname, name, avatar_url, category')
+    .in('user_id', userIds);
+
+  if (profilesErr) throw profilesErr;
+
+  const profileByUserId = new Map<string, any>();
+  (profiles ?? []).forEach((p: any) => profileByUserId.set(p.user_id, p));
+
+  return members.map((m: any) => {
+    const p = profileByUserId.get(m.user_id);
+    return {
+      id: m.id,
+      group_id: m.group_id,
+      user_id: m.user_id,
+      role: m.role,
+      joined_at: m.joined_at,
+      nickname: p?.nickname ?? null,
+      name: p?.name ?? null,
+      avatar_url: p?.avatar_url ?? null,
+      category: p?.category ?? null,
+    };
+  });
 };

@@ -11,6 +11,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/utils/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { useFocusGuard } from '@/hooks/use-focus-guard';
+import { useGlobalPresence } from '@/hooks/use-global-presence';
 import FocusGuardModal from '@/components/FocusGuardModal';
 
 // Cuando la app está en primer plano y llega una notificación, no la mostramos
@@ -37,6 +38,8 @@ export default function RootLayout() {
 
   // RF-02: activa el guard de concentración globalmente
   useFocusGuard();
+  // RF-12/13: mantiene mi presencia activa en todos mis grupos mientras la app está abierta
+  useGlobalPresence();
 
   useEffect(() => {
     // Pide permisos de notificación al usuario
@@ -80,7 +83,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         <Stack.Screen name="add-subject" options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="edit-nickname" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="group/[id]" options={{ headerShown: false }} />
       </Stack>
       <FocusGuardModal />
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />

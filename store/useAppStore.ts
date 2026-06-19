@@ -4,6 +4,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+export type PresencePayload = {
+  user_id: string;
+  is_studying: boolean;
+  subject_name: string | null;
+  started_at: string | null;
+};
+export type PresenceMap = Record<string, PresencePayload>;
+
 export interface PendingSession {
   id: string;
   subjectId: string;
@@ -49,6 +57,16 @@ interface AppStore {
   // Estado de conectividad (RNF-03)
   isOnline: boolean;
   setOnlineStatus: (online: boolean) => void;
+
+  // Trigger para que el presence global re-suscriba a mis grupos (al crear/unirme/salir/eliminar)
+  presenceVersion: number;
+  bumpPresence: () => void;
+
+  // Estado de presencia por grupo (no persistido). Lo escribe useGlobalPresence
+  // y lo lee useGroupPresence en la pantalla del detalle.
+  groupPresence: Record<string, PresenceMap>;
+  setGroupPresence: (groupId: string, map: PresenceMap) => void;
+  clearGroupPresence: (groupId: string) => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -99,6 +117,20 @@ export const useAppStore = create<AppStore>()(
 
       isOnline: true,
       setOnlineStatus: (online) => set({ isOnline: online }),
+
+      presenceVersion: 0,
+      bumpPresence: () => set((s) => ({ presenceVersion: s.presenceVersion + 1 })),
+
+      groupPresence: {},
+      setGroupPresence: (groupId, map) =>
+        set((s) => ({ groupPresence: { ...s.groupPresence, [groupId]: map } })),
+      clearGroupPresence: (groupId) =>
+        set((s) => {
+          if (!s.groupPresence[groupId]) return s;
+          const next = { ...s.groupPresence };
+          delete next[groupId];
+          return { groupPresence: next };
+        }),
     }),
     {
       name: 'app-store',

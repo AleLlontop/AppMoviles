@@ -1,21 +1,41 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { useUser } from '@/hooks/use-user';
-import { createGroup, joinGroup } from '@/services/groupsService';
+import { useAppStore } from '@/store/useAppStore';
+import { createGroup, joinGroup, getMyGroups, MyGroup } from '@/services/groupsService';
 
 export default function GroupScreen() {
   const c = useThemeColors();
   const user = useUser();
+  const router = useRouter();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // --- Mis grupos ---
+  const [myGroups, setMyGroups] = useState<MyGroup[] | null>(null); // null = todavía no cargado
+  const loadMyGroups = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const list = await getMyGroups(user.id);
+      setMyGroups(list);
+    } catch (e: any) {
+      // Si falla, no rompo la UI — solo dejo el estado vacío.
+      setMyGroups([]);
+    }
+  }, [user?.id]);
+
+  useFocusEffect(useCallback(() => {
+    loadMyGroups();
+  }, [loadMyGroups]));
 
   // --- Unirse con código ---
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -26,7 +46,7 @@ export default function GroupScreen() {
 
   const joinErrorMessages: Record<string, string> = {
     invalid_code: 'Código inválido — revisá los caracteres',
-    group_full: 'El grupo está lleno (20/20)',
+    group_full: 'El grupo está lleno (10/10)',
     already_member: 'Ya sos miembro de este grupo',
   };
 
@@ -58,10 +78,11 @@ export default function GroupScreen() {
     setJoining(true);
     setJoinError(null);
     try {
-      await joinGroup(inviteCode, user.id);
+      const group = await joinGroup(inviteCode, user.id);
       setShowJoinModal(false);
       setCode(['', '', '', '', '', '']);
-      // TODO: navegar a la pantalla del grupo
+      useAppStore.getState().bumpPresence();
+      if (group?.id) router.push(`/group/${group.id}`);
     } catch (e: any) {
       setJoinError(e?.name ?? 'invalid_code');
     } finally {
@@ -89,10 +110,11 @@ export default function GroupScreen() {
 
     setLoading(true);
     try {
-      await createGroup(groupName, user.id);
+      const group = await createGroup(groupName, user.id);
       setShowCreateModal(false);
       setGroupName('');
-      // TODO: navegar a la pantalla del grupo creado
+      useAppStore.getState().bumpPresence();
+      if (group?.id) router.push(`/group/${group.id}`);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'No se pudo crear el grupo.');
     } finally {
@@ -106,45 +128,121 @@ export default function GroupScreen() {
     setGroupName('');
   };
 
+  const isLoadingList = myGroups === null;
+  const hasGroups = !!myGroups && myGroups.length > 0;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: c.background }]}>
-      <View style={styles.content}>
+      {isLoadingList ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={c.accentStrong} />
+        </View>
+      ) : !hasGroups ? (
+        <View style={styles.content}>
+          <View style={[styles.iconWrapper, { borderColor: c.accent }]}>
+            <View style={[styles.iconInner, { backgroundColor: c.surface }]}>
+              <Ionicons name="people" size={52} color={c.textSecondary} />
+            </View>
+          </View>
 
-        <View style={[styles.iconWrapper, { borderColor: c.accent }]}>
-          <View style={[styles.iconInner, { backgroundColor: c.surface }]}>
-            <Ionicons name="people" size={52} color={c.textSecondary} />
+          <Text style={[styles.title, { color: c.textPrimary }]}>
+            Aún no estás en ningún grupo
+          </Text>
+          <Text style={[styles.subtitle, { color: c.textSecondary }]}>
+            Creá uno o unite con el código que{'\n'}te compartió tu compañero.
+          </Text>
+
+          <View style={styles.buttonsContainer}>
+            <TouchableOpacity
+              style={[styles.buttonPrimary, { backgroundColor: '#826BF0' }]}
+              activeOpacity={0.85}
+              onPress={() => setShowCreateModal(true)}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.buttonPrimaryText}>Crear grupo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.buttonSecondary, { borderColor: '#826BF0' }]}
+              activeOpacity={0.85}
+              onPress={() => setShowJoinModal(true)}
+            >
+              <Text style={[styles.buttonSecondaryText, { color: '#826BF0' }]}>
+                Unirse con código
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.listScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={[styles.listTitle, { color: c.textPrimary }]}>Mis grupos</Text>
+          <Text style={[styles.listSubtitle, { color: c.textSecondary }]}>
+            {myGroups!.length} {myGroups!.length === 1 ? 'grupo' : 'grupos'}
+          </Text>
 
-        <Text style={[styles.title, { color: c.textPrimary }]}>
-          Aún no estás en ningún grupo
-        </Text>
-        <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-          Creá uno o unite con el código que{'\n'}te compartió tu compañero.
-        </Text>
+          <View style={{ gap: 12, marginTop: 18 }}>
+            {myGroups!.map((g) => {
+              const isOwner = g.role === 'owner';
+              const isAdmin = g.role === 'admin';
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  activeOpacity={0.85}
+                  onPress={() => router.push(`/group/${g.id}`)}
+                  style={[styles.groupCard, styles.cardShadow, { backgroundColor: c.surface }]}
+                >
+                  <View style={[styles.groupIcon, { backgroundColor: `${c.accent}26` }]}>
+                    <Ionicons name="people" size={22} color={c.accentStrong} />
+                  </View>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <View style={styles.groupNameRow}>
+                      <Text
+                        style={[styles.groupName, { color: c.textPrimary }]}
+                        numberOfLines={1}
+                      >
+                        {g.name}
+                      </Text>
+                      {(isOwner || isAdmin) && (
+                        <View style={[styles.miniBadge, { borderColor: `${c.accent}99` }]}>
+                          <Text style={[styles.miniBadgeText, { color: c.accentStrong }]}>
+                            {isOwner ? 'OWNER' : 'ADMIN'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.groupMeta, { color: c.textSecondary }]}>
+                      {g.member_count} / {g.max_members} miembros · código {g.invite_code}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
-        <View style={styles.buttonsContainer}>
-          <TouchableOpacity
-            style={[styles.buttonPrimary, { backgroundColor: '#826BF0' }]}
-            activeOpacity={0.85}
-            onPress={() => setShowCreateModal(true)}
-          >
-            <Ionicons name="add" size={20} color="#fff" />
-            <Text style={styles.buttonPrimaryText}>Crear grupo</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.buttonSecondary, { borderColor: '#826BF0' }]}
-            activeOpacity={0.85}
-            onPress={() => setShowJoinModal(true)}
-          >
-            <Text style={[styles.buttonSecondaryText, { color: '#826BF0' }]}>
-              Unirse con código
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-      </View>
+          <View style={styles.listActions}>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: c.accentStrong }]}
+              activeOpacity={0.85}
+              onPress={() => setShowCreateModal(true)}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.actionBtnText}>Crear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnGhost, { borderColor: c.accentStrong }]}
+              activeOpacity={0.85}
+              onPress={() => setShowJoinModal(true)}
+            >
+              <Ionicons name="enter-outline" size={18} color={c.accentStrong} />
+              <Text style={[styles.actionBtnText, { color: c.accentStrong }]}>Unirse</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
 
       {/* Modal Crear grupo */}
       <Modal
@@ -187,7 +285,7 @@ export default function GroupScreen() {
             {/* Capacidad máxima */}
             <Text style={[styles.label, { color: c.textSecondary }]}>Capacidad máxima</Text>
             <View style={[styles.inputStatic, { backgroundColor: c.separator, borderColor: c.border }]}>
-              <Text style={{ color: c.textPrimary, fontSize: 15 }}>20 miembros (máximo)</Text>
+              <Text style={{ color: c.textPrimary, fontSize: 15 }}>10 miembros (máximo)</Text>
             </View>
 
             {/* Botón Crear */}
@@ -306,6 +404,61 @@ export default function GroupScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // ---- Lista de mis grupos ----
+  listScroll: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 140 },
+  listTitle: { fontSize: 26, fontWeight: '700' },
+  listSubtitle: { fontSize: 13, marginTop: 2 },
+
+  groupCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  groupIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  groupName: { fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  groupMeta: { fontSize: 12 },
+  miniBadge: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  miniBadgeText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+
+  listActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  actionBtnGhost: { backgroundColor: 'transparent', borderWidth: 1.5 },
+  actionBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  cardShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
+  },
+
+  // ---- Estado vacío original ----
   content: {
     flex: 1,
     alignItems: 'center',

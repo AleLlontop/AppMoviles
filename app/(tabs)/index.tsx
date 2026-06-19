@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { TaskCard } from '@/components/TaskCard';
+import { EditNameSheet } from '@/components/EditNameSheet';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,6 +21,7 @@ export default function HomeScreen() {
 
   const [subjects, setSubjects] = useState<any[]>([]);
   const [showConnected, setShowConnected] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<{ id: string; name: string } | null>(null);
 
   const {
     activeSubjectId,
@@ -347,9 +349,7 @@ export default function HomeScreen() {
                 active={isActive}
                 color={subject.color}
                 onPress={() => toggleTimer(subject.id)}
-                onEdit={() =>
-                  router.push({ pathname: '/add-subject', params: { id: subject.id } })
-                }
+                onEdit={() => setEditingSubject({ id: subject.id, name: subject.name })}
                 onDelete={() => {
                   Alert.alert('Eliminar Materia', '¿Estás seguro?', [
                     { text: 'Cancelar', style: 'cancel' },
@@ -394,6 +394,30 @@ export default function HomeScreen() {
           <Text style={{ fontSize: 15, color: '#826BF0', fontWeight: '600' }}>Nueva materia</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <EditNameSheet
+        visible={!!editingSubject}
+        title="Editar materia"
+        description="Cambiá el nombre de la materia. El color lo podés editar desde 'Nueva materia'."
+        icon="book-outline"
+        initialValue={editingSubject?.name ?? ''}
+        placeholder="Ej: Matemáticas"
+        minLength={2}
+        maxLength={60}
+        onClose={() => setEditingSubject(null)}
+        onSave={async (newName) => {
+          if (!editingSubject || !userId) return;
+          const { error } = await supabase
+            .from('subjects')
+            .update({ name: newName })
+            .eq('id', editingSubject.id)
+            .eq('user_id', userId);
+          if (error) throw error;
+          setSubjects((prev) =>
+            prev.map((s) => (s.id === editingSubject.id ? { ...s, name: newName } : s))
+          );
+        }}
+      />
     </View>
   );
 }

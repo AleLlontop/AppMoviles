@@ -71,3 +71,6 @@ coverage/
 
 # Claude Code
 .claude/
+
+# Agent skills (instaladas localmente vía npx skills)
+.agents/

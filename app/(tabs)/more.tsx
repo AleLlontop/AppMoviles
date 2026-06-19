@@ -10,6 +10,7 @@ import { useUser } from '@/hooks/use-user';
 import { getProfile, upsertProfile, CATEGORIES } from '@/services/profilesService';
 import { useAppStore, type ThemeMode } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/use-theme-colors';
+import { EditNameSheet } from '@/components/EditNameSheet';
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { value: 'light',  label: 'Claro',   icon: 'sunny-outline' },
@@ -35,6 +36,7 @@ export default function MoreScreen() {
   const [category, setCategory] = useState<string | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showNicknameSheet, setShowNicknameSheet] = useState(false);
 
   const currentThemeLabel = THEME_OPTIONS.find(o => o.value === theme)?.label ?? 'Sistema';
 
@@ -118,7 +120,7 @@ export default function MoreScreen() {
         )}
 
         <View style={[styles.settingsGroup, { backgroundColor: c.surface }]}>
-          <SettingRow title="Apodo" value={nickname ?? 'Sin apodo'} onPress={() => router.push('/edit-nickname')} />
+          <SettingRow title="Apodo" value={nickname ?? 'Sin apodo'} onPress={() => setShowNicknameSheet(true)} />
           <SettingRow title="Categoría" value={category ?? 'Seleccionar'} showBorder={false} onPress={() => setShowCategoryModal(true)} />
         </View>
 
@@ -182,6 +184,30 @@ export default function MoreScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <EditNameSheet
+        visible={showNicknameSheet}
+        title="Editar apodo"
+        description="Así te van a ver tus compañeros dentro de la app."
+        icon="person-circle-outline"
+        initialValue={nickname ?? ''}
+        placeholder="Tu apodo"
+        minLength={1}
+        maxLength={30}
+        onClose={() => setShowNicknameSheet(false)}
+        onSave={async (newNick) => {
+          if (!user) return;
+          await upsertProfile(user.id, {
+            nickname: newNick,
+            name:
+              user.user_metadata?.full_name ||
+              user.user_metadata?.name ||
+              user.email ||
+              'Usuario',
+          });
+          setNickname(newNick);
+        }}
+      />
     </SafeAreaView>
   );
 }

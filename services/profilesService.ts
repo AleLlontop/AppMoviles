@@ -4,7 +4,9 @@ export type Profile = {
   id: string;
   user_id: string;
   nickname: string | null;
+  name: string | null;
   category: string | null;
+  avatar_url: string | null;
 };
 
 export const CATEGORIES = [
@@ -21,7 +23,7 @@ export const CATEGORIES = [
 export const getProfile = async (userId: string): Promise<Profile | null> => {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, user_id, nickname, category')
+    .select('id, user_id, nickname, name, category, avatar_url')
     .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
@@ -30,7 +32,7 @@ export const getProfile = async (userId: string): Promise<Profile | null> => {
 
 export const upsertProfile = async (
   userId: string,
-  fields: { nickname?: string; category?: string }
+  fields: { nickname?: string; name?: string; category?: string }
 ): Promise<void> => {
   const { error } = await supabase
     .from('profiles')
