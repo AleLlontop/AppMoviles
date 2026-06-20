@@ -11,6 +11,7 @@ import { getProfile, upsertProfile, CATEGORIES } from '@/services/profilesServic
 import { useAppStore, type ThemeMode } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { EditNameSheet } from '@/components/EditNameSheet';
+import { ConfirmModal } from '@/components/ConfirmModal';
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { value: 'light',  label: 'Claro',   icon: 'sunny-outline' },
@@ -37,6 +38,7 @@ export default function MoreScreen() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showNicknameSheet, setShowNicknameSheet] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const currentThemeLabel = THEME_OPTIONS.find(o => o.value === theme)?.label ?? 'Sistema';
 
@@ -66,16 +68,12 @@ export default function MoreScreen() {
     setShowThemeModal(false);
   };
 
-  const handleLogout = () => {
-    Alert.alert('Cerrar sesión', '¿Estás seguro?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Cerrar sesión', style: 'destructive', onPress: async () => {
-          await supabase.auth.signOut();
-          router.replace('/login');
-        }
-      }
-    ]);
+  const handleLogout = () => setShowLogoutConfirm(true);
+
+  const doLogout = async () => {
+    await supabase.auth.signOut();
+    setShowLogoutConfirm(false);
+    router.replace('/login');
   };
 
   const SettingRow = ({ title, value, showBorder = true, onPress, destructive = false }: any) => (
@@ -184,6 +182,17 @@ export default function MoreScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <ConfirmModal
+        visible={showLogoutConfirm}
+        title="Cerrar sesión"
+        description="Vas a tener que volver a iniciar sesión la próxima vez que abras la app."
+        icon="log-out-outline"
+        confirmLabel="Cerrar sesión"
+        destructive
+        onConfirm={doLogout}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
 
       <EditNameSheet
         visible={showNicknameSheet}

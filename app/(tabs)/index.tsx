@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { TaskCard } from '@/components/TaskCard';
 import { EditNameSheet } from '@/components/EditNameSheet';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,6 +23,7 @@ export default function HomeScreen() {
   const [subjects, setSubjects] = useState<any[]>([]);
   const [showConnected, setShowConnected] = useState(false);
   const [editingSubject, setEditingSubject] = useState<{ id: string; name: string } | null>(null);
+  const [deletingSubject, setDeletingSubject] = useState<{ id: string; name: string } | null>(null);
 
   const {
     activeSubjectId,
@@ -330,25 +332,7 @@ export default function HomeScreen() {
                 color={subject.color}
                 onPress={() => toggleTimer(subject.id)}
                 onEdit={() => setEditingSubject({ id: subject.id, name: subject.name })}
-                onDelete={() => {
-                  Alert.alert('Eliminar Materia', '¿Estás seguro?', [
-                    { text: 'Cancelar', style: 'cancel' },
-                    {
-                      text: 'Eliminar',
-                      style: 'destructive',
-                      onPress: async () => {
-                        const { error } = await supabase
-                          .from('subjects')
-                          .delete()
-                          .eq('id', subject.id);
-                        if (!error) {
-                          setSubjects((s) => s.filter((x) => x.id !== subject.id));
-                          if (activeSubjectId === subject.id) stopTimer();
-                        }
-                      },
-                    },
-                  ]);
-                }}
+                onDelete={() => setDeletingSubject({ id: subject.id, name: subject.name })}
               />
             );
           })
@@ -374,6 +358,32 @@ export default function HomeScreen() {
           <Text style={{ fontSize: 15, color: '#826BF0', fontWeight: '600' }}>Nueva materia</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <ConfirmModal
+        visible={!!deletingSubject}
+        title="Eliminar materia"
+        description={
+          deletingSubject
+            ? `Se va a eliminar "${deletingSubject.name}" junto con todo su historial. Esta acción no se puede deshacer.`
+            : ''
+        }
+        icon="trash-outline"
+        confirmLabel="Eliminar"
+        destructive
+        onConfirm={async () => {
+          if (!deletingSubject) return;
+          const { error } = await supabase
+            .from('subjects')
+            .delete()
+            .eq('id', deletingSubject.id);
+          if (!error) {
+            setSubjects((s) => s.filter((x) => x.id !== deletingSubject.id));
+            if (activeSubjectId === deletingSubject.id) stopTimer();
+          }
+          setDeletingSubject(null);
+        }}
+        onCancel={() => setDeletingSubject(null)}
+      />
 
       <EditNameSheet
         visible={!!editingSubject}

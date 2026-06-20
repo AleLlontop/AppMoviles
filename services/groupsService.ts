@@ -144,6 +144,34 @@ export const updateGroupName = async (groupId: string, name: string): Promise<vo
   if (error) throw error;
 };
 
+export const updateMemberRole = async (
+  groupId: string,
+  userId: string,
+  newRole: 'admin' | 'member'
+): Promise<void> => {
+  // RLS members_update_role: solo el owner puede UPDATE roles. El owner
+  // tampoco puede modificarse a sí mismo (CHECK no lo prohíbe, pero el front
+  // lo bloquea — owner mismo no aparece accionable).
+  const { error } = await supabase
+    .from('group_members')
+    .update({ role: newRole })
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+};
+
+export const kickMember = async (groupId: string, userId: string): Promise<void> => {
+  // RLS members_delete (extendida): owner kickea a cualquiera, admin solo kickea
+  // members. El servidor valida; el front solo debe ofrecer la acción cuando
+  // aplica para no sorprender con un error.
+  const { error } = await supabase
+    .from('group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+};
+
 export const leaveGroup = async (groupId: string, userId: string): Promise<void> => {
   // RLS members_delete permite borrar la propia fila (user_id = auth.uid()).
   const { error } = await supabase

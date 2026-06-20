@@ -20,6 +20,7 @@ import { useThemeColors } from '@/hooks/use-theme-colors';
 import { useUser } from '@/hooks/use-user';
 import { MemberAvatar } from '@/components/MemberAvatar';
 import { EditNameSheet } from '@/components/EditNameSheet';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import { suspendFocusGuard, resumeFocusGuard } from '@/utils/focusGuard';
 import { useGroupPresence } from '@/hooks/use-group-presence';
 import { useAppStore } from '@/store/useAppStore';
@@ -49,6 +50,7 @@ export default function GroupDetailScreen() {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [editNameVisible, setEditNameVisible] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<'leave' | 'delete' | null>(null);
 
   // El tracking de mi presencia lo hace useGlobalPresence (en _layout.tsx).
   // Acá solo escucho el estado de los demás miembros del grupo.
@@ -86,13 +88,13 @@ export default function GroupDetailScreen() {
   // Re-cargo al volver al detalle (e.g. después de editar el nombre).
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Realtime: si algún miembro del grupo edita su profile (apodo, avatar, categoría),
-  // refresco la lista. Filtramos por user_ids de los miembros actuales.
+  // Realtime sobre profiles (apodo / avatar / categoría) y group_members
+  // (rol, entradas, salidas). Cualquier cambio dispara recarga.
   useEffect(() => {
-    if (members.length === 0) return;
+    if (!id || members.length === 0) return;
     const memberIds = members.map((m) => m.user_id);
     const channel = supabase
-      .channel(`profiles-of-group:${id}`)
+      .channel(`group-detail:${id}`)
       .on(
         'postgres_changes',
         {
@@ -100,6 +102,16 @@ export default function GroupDetailScreen() {
           schema: 'public',
           table: 'profiles',
           filter: `user_id=in.(${memberIds.join(',')})`,
+        },
+        () => load()
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_members',
+          filter: `group_id=eq.${id}`,
         },
         () => load()
       )
@@ -136,58 +148,32 @@ export default function GroupDetailScreen() {
 
   const confirmLeave = () => {
     setOptionsVisible(false);
-    Alert.alert(
-      'Salir del grupo',
-      `¿Seguro que querés salir de "${group?.name}"? Vas a tener que pedir el código de nuevo para volver.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Salir',
-          style: 'destructive',
-          onPress: async () => {
-            if (!user?.id || !group) return;
-            setActionLoading(true);
-            try {
-              await leaveGroup(group.id, user.id);
-              useAppStore.getState().bumpPresence();
-              router.back();
-            } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'No se pudo salir del grupo.');
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
+    setPendingConfirm('leave');
   };
 
   const confirmDelete = () => {
     setOptionsVisible(false);
-    Alert.alert(
-      'Eliminar grupo',
-      `Esta acción no se puede deshacer. Se eliminan todos los miembros y actividades de "${group?.name}".`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            if (!group) return;
-            setActionLoading(true);
-            try {
-              await deleteGroup(group.id);
-              useAppStore.getState().bumpPresence();
-              router.back();
-            } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'No se pudo eliminar el grupo.');
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
+    setPendingConfirm('delete');
+  };
+
+  const runPendingConfirm = async () => {
+    if (!pendingConfirm || !group) return;
+    setActionLoading(true);
+    try {
+      if (pendingConfirm === 'leave') {
+        if (!user?.id) return;
+        await leaveGroup(group.id, user.id);
+      } else {
+        await deleteGroup(group.id);
+      }
+      useAppStore.getState().bumpPresence();
+      setPendingConfirm(null);
+      router.back();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'No se pudo completar la acción.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const displayName = (m: GroupMember) =>
@@ -417,13 +403,12 @@ export default function GroupDetailScreen() {
             label="Estadísticas del grupo"
             onPress={() => Alert.alert('Próximamente', 'Estadísticas grupales.')}
           />
-          {isOwner && (
+          {(isOwner || myRole === 'admin') && (
             <NavRow
               colors={c}
               icon="people"
               label="Gestionar miembros"
-              ownerOnly
-              onPress={() => Alert.alert('Próximamente', 'Gestión de roles y expulsar miembros.')}
+              onPress={() => router.push(`/group/${group.id}/manage`)}
             />
           )}
           <NavRow
@@ -520,6 +505,28 @@ export default function GroupDetailScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <ConfirmModal
+        visible={pendingConfirm === 'leave'}
+        title="Salir del grupo"
+        description={`Vas a dejar "${group?.name}". Si querés volver vas a tener que pedir el código de invitación de nuevo.`}
+        icon="log-out-outline"
+        confirmLabel="Salir"
+        destructive
+        onConfirm={runPendingConfirm}
+        onCancel={() => !actionLoading && setPendingConfirm(null)}
+      />
+
+      <ConfirmModal
+        visible={pendingConfirm === 'delete'}
+        title="Eliminar grupo"
+        description={`"${group?.name}" se elimina para todos los miembros. También se borran las actividades del grupo. Esta acción no se puede deshacer.`}
+        icon="trash-outline"
+        confirmLabel="Eliminar grupo"
+        destructive
+        onConfirm={runPendingConfirm}
+        onCancel={() => !actionLoading && setPendingConfirm(null)}
+      />
 
       <EditNameSheet
         visible={editNameVisible}
