@@ -160,6 +160,38 @@ export const updateMemberRole = async (
   if (error) throw error;
 };
 
+export type TransferOwnershipError =
+  | 'not_owner'
+  | 'already_owner'
+  | 'target_not_member'
+  | 'group_not_found';
+
+const TRANSFER_ERROR_NAMES: TransferOwnershipError[] = [
+  'not_owner',
+  'already_owner',
+  'target_not_member',
+  'group_not_found',
+];
+
+export const transferOwnership = async (
+  groupId: string,
+  newOwnerId: string
+): Promise<void> => {
+  // Operación atómica server-side: cambia groups.created_by y los roles en
+  // group_members en una sola transacción. El RPC corre con SECURITY DEFINER
+  // y valida que el caller sea el owner actual y que el target sea miembro.
+  const { error } = await supabase.rpc('transfer_group_ownership', {
+    p_group_id: groupId,
+    p_new_owner_id: newOwnerId,
+  });
+  if (error) {
+    const matched = TRANSFER_ERROR_NAMES.find((name) => error.message.includes(name));
+    const err = new Error(matched ?? error.message);
+    err.name = matched ?? 'transfer_failed';
+    throw err;
+  }
+};
+
 export const kickMember = async (groupId: string, userId: string): Promise<void> => {
   // RLS members_delete (extendida): owner kickea a cualquiera, admin solo kickea
   // members. El servidor valida; el front solo debe ofrecer la acción cuando
