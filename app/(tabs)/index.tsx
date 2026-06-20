@@ -94,41 +94,21 @@ export default function HomeScreen() {
   }, [activeSubjectId]);
 
   const saveSession = async (subjectId: string, start: Date, durationSeconds: number) => {
+    // Cada stop del timer = una sesión nueva. Nada de coalescing por día:
+    // mantiene fidelidad del historial (rango real == duración) y el adapter
+    // de estadísticas igual agrupa por día/materia al render.
     const endTime = new Date();
-    const todayLocal = new Date();
-    todayLocal.setHours(0, 0, 0, 0);
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('study_sessions')
-        .select('*')
-        .eq('subject_id', subjectId)
-        .gte('start_time', todayLocal.toISOString())
-        .limit(1);
-
-      if (fetchError) throw fetchError;
-
-      if (data && data.length > 0) {
-        const existing = data[0];
-        const { error: updateError } = await supabase
-          .from('study_sessions')
-          .update({
-            end_time: endTime.toISOString(),
-            duration: (existing.duration || 0) + durationSeconds,
-          })
-          .eq('id', existing.id);
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await supabase.from('study_sessions').insert({
-          subject_id: subjectId,
-          start_time: start.toISOString(),
-          end_time: endTime.toISOString(),
-          duration: durationSeconds,
-          status: 'completed',
-          ...(userId ? { user_id: userId } : {}),
-        });
-        if (insertError) throw insertError;
-      }
+      const { error: insertError } = await supabase.from('study_sessions').insert({
+        subject_id: subjectId,
+        start_time: start.toISOString(),
+        end_time: endTime.toISOString(),
+        duration: durationSeconds,
+        status: 'completed',
+        ...(userId ? { user_id: userId } : {}),
+      });
+      if (insertError) throw insertError;
 
       setOnlineStatus(true);
     } catch (e) {
