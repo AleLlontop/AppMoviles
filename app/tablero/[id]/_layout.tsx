@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { TouchableOpacity, Text, View, ActivityIndicator, Modal, TextInput, Pressable, KeyboardAvoidingView, Platform, Alert, ScrollView } from 'react-native';
+import { TouchableOpacity, Text, View, ActivityIndicator, Modal, TextInput, Pressable, Keyboard, Platform, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { supabase } from '@/utils/supabase';
@@ -24,6 +24,21 @@ export default function TableroLayout() {
   const [updating, setUpdating] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+
+  // Altura del teclado para empujar el sheet (KeyboardAvoidingView dentro de
+  // Modal es flaky en Android — patrón ya usado en EditNameSheet).
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    if (!editVisible) return;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [editVisible]);
 
   useEffect(() => {
     if (id) {
@@ -270,8 +285,14 @@ export default function TableroLayout() {
       {/* Modal para Editar Tablero */}
       <Modal visible={editVisible} transparent animationType="slide" onRequestClose={() => !updating && setEditVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !updating && setEditVisible(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <Pressable style={{ backgroundColor: c.surface }} className="rounded-t-3xl p-6 pt-2 pb-10" onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={{
+              backgroundColor: c.surface,
+              paddingBottom: 40 + kbHeight,
+            }}
+            className="rounded-t-3xl p-6 pt-2"
+            onPress={(e) => e.stopPropagation()}
+          >
               <View className="items-center mb-6 mt-2">
                 <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
               </View>
@@ -351,8 +372,7 @@ export default function TableroLayout() {
               <TouchableOpacity className="w-full py-3 flex-row justify-center items-center" onPress={() => setEditVisible(false)} disabled={updating}>
                 <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
               </TouchableOpacity>
-            </Pressable>
-          </KeyboardAvoidingView>
+          </Pressable>
         </Pressable>
       </Modal>
 

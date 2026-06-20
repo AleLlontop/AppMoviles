@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Keyboard, Platform, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,9 +38,23 @@ export default function TareasScreen() {
   const [options, setOptions] = useState<string[]>(['', '']); // Al menos 2 opciones iniciales
   const [correctOptionIndex, setCorrectOptionIndex] = useState<number>(0);
 
-  // Alert validation states
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+
+  // Altura del teclado para empujar el sheet (KeyboardAvoidingView dentro de
+  // Modal es flaky en Android — patrón ya usado en EditNameSheet).
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    if (!createModalVisible) return;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [createModalVisible]);
 
   useFocusEffect(
     useCallback(() => {
@@ -319,8 +333,14 @@ export default function TareasScreen() {
       {/* Modal para Crear Pregunta */}
       <Modal visible={createModalVisible} transparent animationType="slide" onRequestClose={() => !creating && setCreateModalVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !creating && setCreateModalVisible(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-            <Pressable style={{ backgroundColor: c.surface }} className="rounded-t-3xl p-6 pt-2 pb-10" onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={{
+              backgroundColor: c.surface,
+              paddingBottom: 40 + kbHeight,
+            }}
+            className="rounded-t-3xl p-6 pt-2"
+            onPress={(e) => e.stopPropagation()}
+          >
               <View className="items-center mb-6 mt-2">
                 <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
               </View>
@@ -452,8 +472,7 @@ export default function TareasScreen() {
               >
                 <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
               </TouchableOpacity>
-            </Pressable>
-          </KeyboardAvoidingView>
+          </Pressable>
         </Pressable>
       </Modal>
 

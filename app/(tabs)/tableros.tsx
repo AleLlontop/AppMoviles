@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Image, Modal, TextInput, FlatList, Pressable, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Image, Modal, TextInput, FlatList, Pressable, Keyboard, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +33,21 @@ export default function TablerosScreen() {
   
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+
+  // Altura del teclado para empujar el sheet (KeyboardAvoidingView dentro de
+  // Modal es flaky en Android — patrón ya usado en EditNameSheet).
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    if (!modalVisible) return;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [modalVisible]);
   
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
@@ -217,15 +232,31 @@ export default function TablerosScreen() {
       {hasData ? <ListState /> : <EmptyState />}
 
       {/* Modal para Crear Tablero */}
-      <Modal visible={modalVisible} transparent={true} animationType="slide">
-        <Pressable 
-          style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} 
-          onPress={() => setModalVisible(false)}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setModalVisible(false);
+        }}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }}
+          onPress={() => {
+            Keyboard.dismiss();
+            setModalVisible(false);
+          }}
         >
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          <Pressable
+            style={{
+              backgroundColor: c.surface,
+              paddingBottom: 40 + kbHeight,
+            }}
+            className="rounded-t-3xl p-6 pt-2"
+            onPress={(e) => e.stopPropagation()}
           >
-            <Pressable style={{ backgroundColor: c.surface }} className="rounded-t-3xl p-6 pt-2 pb-10" onPress={(e) => e.stopPropagation()}>
               {/* Grabber */}
               <View className="items-center mb-6 mt-2">
                 <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
@@ -314,8 +345,7 @@ export default function TablerosScreen() {
               >
                 <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
               </TouchableOpacity>
-            </Pressable>
-          </KeyboardAvoidingView>
+          </Pressable>
         </Pressable>
       </Modal>
 

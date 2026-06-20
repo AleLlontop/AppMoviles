@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Keyboard, Platform, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +39,22 @@ export default function ResumenesScreen() {
   // Validation alert states
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+
+  // Altura del teclado para empujar el sheet (KeyboardAvoidingView dentro de
+  // Modal es flaky en Android — patrón ya usado en EditNameSheet).
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const isVisible = createModalVisible || editModalVisible;
+    if (!isVisible) return;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [createModalVisible, editModalVisible]);
 
   useFocusEffect(
     useCallback(() => {
@@ -286,34 +302,40 @@ export default function ResumenesScreen() {
       {/* Modal para Crear Resumen */}
       <Modal visible={createModalVisible} transparent animationType="slide" onRequestClose={() => !updating && setCreateModalVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !updating && setCreateModalVisible(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-            <Pressable style={{ backgroundColor: c.surface }} className="rounded-t-3xl p-6 pt-2 pb-10" onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={{
+              backgroundColor: c.surface,
+              paddingBottom: 40 + kbHeight,
+            }}
+            className="rounded-t-3xl p-6 pt-2"
+            onPress={(e) => e.stopPropagation()}
+          >
               <View className="items-center mb-6 mt-2">
                 <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
               </View>
               
-              <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-6">
+              <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-4">
                 Crear Resumen
               </Text>
 
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
-                Título del Resumen
+              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
+                Título
               </Text>
               <TextInput
                 style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-4 text-base"
+                className="p-4 rounded-xl mb-3 text-base"
                 placeholder="Ej: Apuntes de Termodinámica - Clase 1"
                 placeholderTextColor={c.textSecondary}
                 value={summaryTitle}
                 onChangeText={setSummaryTitle}
               />
 
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
+              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
                 Contenido
               </Text>
               <TextInput
                 style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-8 text-base h-60"
+                className="p-4 rounded-xl mb-5 text-base h-36"
                 placeholder="Escribe o pega tu resumen aquí..."
                 placeholderTextColor={c.textSecondary}
                 value={summaryContent}
@@ -341,42 +363,47 @@ export default function ResumenesScreen() {
               >
                 <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
               </TouchableOpacity>
-            </Pressable>
-          </KeyboardAvoidingView>
+          </Pressable>
         </Pressable>
       </Modal>
 
       {/* Modal para Editar Resumen */}
       <Modal visible={editModalVisible} transparent animationType="slide" onRequestClose={() => !updating && setEditModalVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !updating && setEditModalVisible(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-            <Pressable style={{ backgroundColor: c.surface }} className="rounded-t-3xl p-6 pt-2 pb-10" onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={{
+              backgroundColor: c.surface,
+              paddingBottom: 40 + kbHeight,
+            }}
+            className="rounded-t-3xl p-6 pt-2"
+            onPress={(e) => e.stopPropagation()}
+          >
               <View className="items-center mb-6 mt-2">
                 <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
               </View>
               
-              <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-6">
+              <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-4">
                 Editar Resumen
               </Text>
 
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
-                Título del Resumen
+              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
+                Título
               </Text>
               <TextInput
                 style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-4 text-base"
+                className="p-4 rounded-xl mb-3 text-base"
                 placeholder="Título del resumen"
                 placeholderTextColor={c.textSecondary}
                 value={summaryTitle}
                 onChangeText={setSummaryTitle}
               />
 
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
+              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
                 Contenido
               </Text>
               <TextInput
                 style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-8 text-base h-60"
+                className="p-4 rounded-xl mb-5 text-base h-36"
                 placeholder="Contenido del resumen"
                 placeholderTextColor={c.textSecondary}
                 value={summaryContent}
@@ -404,8 +431,7 @@ export default function ResumenesScreen() {
               >
                 <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
               </TouchableOpacity>
-            </Pressable>
-          </KeyboardAvoidingView>
+          </Pressable>
         </Pressable>
       </Modal>
 
