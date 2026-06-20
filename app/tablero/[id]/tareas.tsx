@@ -349,107 +349,109 @@ export default function TareasScreen() {
                 Crear Pregunta
               </Text>
 
-              {/* Selector de Tipo de Pregunta */}
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
-                Tipo de Pregunta
-              </Text>
-              <View className="flex-row mb-4">
-                <TouchableOpacity
-                  onPress={() => setTaskType('multiple_choice')}
-                  style={{ 
-                    backgroundColor: taskType === 'multiple_choice' ? `${c.accent}20` : c.background,
-                    borderColor: taskType === 'multiple_choice' ? c.accentStrong : c.border,
-                    borderWidth: 1
-                  }}
-                  className="flex-1 py-3 rounded-xl items-center mr-2"
-                >
-                  <Text style={{ color: taskType === 'multiple_choice' ? c.accentStrong : c.textPrimary, fontWeight: 'bold' }}>
-                    Opción Múltiple
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setTaskType('open_answer')}
-                  style={{ 
-                    backgroundColor: taskType === 'open_answer' ? `${c.accent}20` : c.background,
-                    borderColor: taskType === 'open_answer' ? c.accentStrong : c.border,
-                    borderWidth: 1
-                  }}
-                  className="flex-1 py-3 rounded-xl items-center ml-2"
-                >
-                  <Text style={{ color: taskType === 'open_answer' ? c.accentStrong : c.textPrimary, fontWeight: 'bold' }}>
-                    Respuesta Abierta
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={true} className="mb-4">
+                {/* Selector de Tipo de Pregunta */}
+                <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
+                  Tipo de Pregunta
+                </Text>
+                <View className="flex-row mb-4">
+                  <TouchableOpacity
+                    onPress={() => setTaskType('multiple_choice')}
+                    style={{ 
+                      backgroundColor: taskType === 'multiple_choice' ? `${c.accent}20` : c.background,
+                      borderColor: taskType === 'multiple_choice' ? c.accentStrong : c.border,
+                      borderWidth: 1
+                    }}
+                    className="flex-row items-center justify-center flex-1 py-3 rounded-xl mr-2"
+                  >
+                    <Text style={{ color: taskType === 'multiple_choice' ? c.accentStrong : c.textPrimary, fontWeight: 'bold' }}>
+                      Opción Múltiple
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setTaskType('open_answer')}
+                    style={{ 
+                      backgroundColor: taskType === 'open_answer' ? `${c.accent}20` : c.background,
+                      borderColor: taskType === 'open_answer' ? c.accentStrong : c.border,
+                      borderWidth: 1
+                    }}
+                    className="flex-row items-center justify-center flex-1 py-3 rounded-xl ml-2"
+                  >
+                    <Text style={{ color: taskType === 'open_answer' ? c.accentStrong : c.textPrimary, fontWeight: 'bold' }}>
+                      Respuesta Abierta
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-              {/* Enunciado */}
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
-                Enunciado / Pregunta
-              </Text>
-              <TextInput
-                style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-4 text-base"
-                placeholder="Ej: ¿Cuál es el límite de la función...?"
-                placeholderTextColor={c.textSecondary}
-                value={questionText}
-                onChangeText={setQuestionText}
-              />
+                {/* Enunciado */}
+                <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
+                  Enunciado / Pregunta
+                </Text>
+                <TextInput
+                  style={{ backgroundColor: c.background, color: c.textPrimary }}
+                  className="p-4 rounded-xl mb-4 text-base"
+                  placeholder="Ej: ¿Cuál es el límite de la función...?"
+                  placeholderTextColor={c.textSecondary}
+                  value={questionText}
+                  onChangeText={setQuestionText}
+                />
 
-              {/* Campos dinámicos según el tipo de pregunta */}
-              {taskType === 'multiple_choice' ? (
-                <View className="mb-6">
-                  <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
-                    Opciones de Respuesta (Indica la correcta)
-                  </Text>
-                  <ScrollView style={{ maxHeight: 180 }} showsVerticalScrollIndicator={true}>
-                    {options.map((option, idx) => (
-                      <View key={idx} className="flex-row items-center mb-3">
-                        <TouchableOpacity
-                          onPress={() => setCorrectOptionIndex(idx)}
-                          style={{ borderColor: idx === correctOptionIndex ? c.accentStrong : c.border }}
-                          className="w-6 h-6 rounded-full border items-center justify-center mr-3"
-                        >
-                          {idx === correctOptionIndex && <View style={{ backgroundColor: c.accentStrong }} className="w-3.5 h-3.5 rounded-full" />}
-                        </TouchableOpacity>
-                        <TextInput
-                          style={{ backgroundColor: c.background, color: c.textPrimary, flex: 1 }}
-                          className="p-3 rounded-xl text-sm"
-                          placeholder={`Opción ${idx + 1}`}
-                          placeholderTextColor={c.textSecondary}
-                          value={option}
-                          onChangeText={(text) => handleOptionTextChange(text, idx)}
-                        />
-                        {options.length > 2 && (
-                          <TouchableOpacity onPress={() => handleRemoveField(idx)} className="ml-2 p-2">
-                            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                {/* Campos dinámicos según el tipo de pregunta */}
+                {taskType === 'multiple_choice' ? (
+                  <View className="mb-6">
+                    <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
+                      Opciones de Respuesta (Indica la correcta)
+                    </Text>
+                    <View className="gap-1">
+                      {options.map((option, idx) => (
+                        <View key={idx} className="flex-row items-center mb-3">
+                          <TouchableOpacity
+                            onPress={() => setCorrectOptionIndex(idx)}
+                            style={{ borderColor: idx === correctOptionIndex ? c.accentStrong : c.border }}
+                            className="w-6 h-6 rounded-full border items-center justify-center mr-3"
+                          >
+                            {idx === correctOptionIndex && <View style={{ backgroundColor: c.accentStrong }} className="w-3.5 h-3.5 rounded-full" />}
                           </TouchableOpacity>
-                        )}
-                      </View>
-                    ))}
-                  </ScrollView>
-                  {options.length < 5 && (
-                    <TouchableOpacity onPress={handleAddField} className="flex-row items-center mt-2 ml-1">
-                      <Ionicons name="add-circle-outline" size={20} color={c.accentStrong} />
-                      <Text style={{ color: c.accentStrong }} className="text-sm font-semibold ml-1.5">Agregar Opción</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ) : (
-                <View className="mb-6">
-                  <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
-                    Respuesta Sugerida (Opcional)
-                  </Text>
-                  <TextInput
-                    style={{ backgroundColor: c.background, color: c.textPrimary }}
-                    className="p-4 rounded-xl text-base"
-                    placeholder="Ej: Es la aproximación de la función a un punto..."
-                    placeholderTextColor={c.textSecondary}
-                    value={openAnswerModel}
-                    onChangeText={setOpenAnswerModel}
-                    multiline
-                  />
-                </View>
-              )}
+                          <TextInput
+                            style={{ backgroundColor: c.background, color: c.textPrimary, flex: 1 }}
+                            className="p-3 rounded-xl text-sm"
+                            placeholder={`Opción ${idx + 1}`}
+                            placeholderTextColor={c.textSecondary}
+                            value={option}
+                            onChangeText={(text) => handleOptionTextChange(text, idx)}
+                          />
+                          {options.length > 2 && (
+                            <TouchableOpacity onPress={() => handleRemoveField(idx)} className="ml-2 p-2">
+                              <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                    {options.length < 5 && (
+                      <TouchableOpacity onPress={handleAddField} className="flex-row items-center mt-2 ml-1">
+                        <Ionicons name="add-circle-outline" size={20} color={c.accentStrong} />
+                        <Text style={{ color: c.accentStrong }} className="text-sm font-semibold ml-1.5">Agregar Opción</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ) : (
+                  <View className="mb-6">
+                    <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
+                      Respuesta Sugerida (Opcional)
+                    </Text>
+                    <TextInput
+                      style={{ backgroundColor: c.background, color: c.textPrimary }}
+                      className="p-4 rounded-xl text-base"
+                      placeholder="Ej: Es la aproximación de la función a un punto..."
+                      placeholderTextColor={c.textSecondary}
+                      value={openAnswerModel}
+                      onChangeText={setOpenAnswerModel}
+                      multiline
+                    />
+                  </View>
+                )}
+              </ScrollView>
 
               {/* Botón Guardar */}
               <TouchableOpacity
