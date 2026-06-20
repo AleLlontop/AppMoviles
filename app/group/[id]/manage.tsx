@@ -25,6 +25,7 @@ import {
   getGroupMembers,
   updateMemberRole,
   kickMember,
+  transferOwnership,
   Group,
   GroupMember,
 } from '@/services/groupsService';
@@ -33,7 +34,7 @@ type SheetTarget = {
   member: GroupMember;
 };
 
-type ConfirmKind = 'promote' | 'demote' | 'kick';
+type ConfirmKind = 'promote' | 'demote' | 'kick' | 'transfer';
 type Pending = { kind: ConfirmKind; member: GroupMember } | null;
 
 export default function ManageMembersScreen() {
@@ -123,6 +124,7 @@ export default function ManageMembersScreen() {
         canPromote: target.role === 'member',
         canDemote: isAdmin,
         canKick: true,
+        canTransfer: true,
       };
     }
     if (iAmAdmin) {
@@ -133,6 +135,7 @@ export default function ManageMembersScreen() {
         canPromote: false,
         canDemote: false,
         canKick: true,
+        canTransfer: false,
       };
     }
     return { canOpen: false } as const;
@@ -162,6 +165,11 @@ export default function ManageMembersScreen() {
     setPending({ kind: 'kick', member });
   };
 
+  const handleTransfer = (member: GroupMember) => {
+    setSheet(null);
+    setPending({ kind: 'transfer', member });
+  };
+
   const runPending = async () => {
     if (!pending || !id) return;
     const { kind, member } = pending;
@@ -170,6 +178,7 @@ export default function ManageMembersScreen() {
       if (kind === 'promote') await updateMemberRole(id, member.user_id, 'admin');
       else if (kind === 'demote') await updateMemberRole(id, member.user_id, 'member');
       else if (kind === 'kick') await kickMember(id, member.user_id);
+      else if (kind === 'transfer') await transferOwnership(id, member.user_id);
       await load();
       setPending(null);
     } catch (e: any) {
@@ -206,6 +215,14 @@ export default function ManageMembersScreen() {
               description: `${n} va a salir del grupo. Esta acción no se puede deshacer.`,
               icon: 'person-remove' as const,
               confirmLabel: 'Expulsar',
+              destructive: true,
+            };
+          case 'transfer':
+            return {
+              title: 'Transferir grupo',
+              description: `${n} pasa a ser el dueño del grupo. Vos vas a quedar como Admin y podrás salir o ser expulsado. Esta acción no se puede deshacer sin que el nuevo dueño te la devuelva.`,
+              icon: 'swap-horizontal' as const,
+              confirmLabel: `Transferir a ${n}`,
               destructive: true,
             };
         }
@@ -444,6 +461,15 @@ export default function ManageMembersScreen() {
                         label="Expulsar del grupo"
                         danger
                         onPress={() => handleKick(sheet.member)}
+                      />
+                    )}
+                    {a.canTransfer && (
+                      <SheetAction
+                        c={c}
+                        icon="swap-horizontal"
+                        label="Transferir grupo"
+                        danger
+                        onPress={() => handleTransfer(sheet.member)}
                       />
                     )}
                   </>

@@ -88,6 +88,7 @@ export default function RootLayout() {
         <Stack.Screen name="add-subject" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="group/[id]/index" options={{ headerShown: false }} />
         <Stack.Screen name="group/[id]/manage" options={{ headerShown: false }} />
+        <Stack.Screen name="group/[id]/stats" options={{ headerShown: false }} />
       </Stack>
       <FocusGuardModal />
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />

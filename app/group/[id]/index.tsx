@@ -401,7 +401,7 @@ export default function GroupDetailScreen() {
             colors={c}
             icon="stats-chart"
             label="Estadísticas del grupo"
-            onPress={() => Alert.alert('Próximamente', 'Estadísticas grupales.')}
+            onPress={() => router.push(`/group/${group.id}/stats`)}
           />
           {(isOwner || myRole === 'admin') && (
             <NavRow
