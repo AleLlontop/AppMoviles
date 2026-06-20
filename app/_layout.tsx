@@ -21,6 +21,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: false,
     shouldPlaySound: false,
     shouldSetBadge: false,
+    shouldShowBanner: false,
+    shouldShowList: false,
   }),
 });
 
@@ -81,6 +83,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="tablero/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         <Stack.Screen name="add-subject" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="group/[id]/index" options={{ headerShown: false }} />

@@ -60,9 +60,9 @@ export default function TabLayout() {
         }}
       />
        <Tabs.Screen
-         name="dashboard"
+         name="tableros"
          options={{
-           title: 'Dashboard',
+           title: 'Boards',
            tabBarIcon: ({ focused }) => (
              <TabIcon
                name="grid"
@@ -71,6 +71,12 @@ export default function TabLayout() {
                inactiveColor={c.textSecondary}
              />
            ),
+         }}
+       />
+       <Tabs.Screen
+         name="prueba1"
+         options={{
+           href: null,
          }}
        />
       <Tabs.Screen
