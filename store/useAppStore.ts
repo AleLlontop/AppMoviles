@@ -40,10 +40,26 @@ interface AppStore {
   addInterruption: () => void;
   resetInterruptions: () => void;
 
-  // Modal de bienvenida (RF-02)
-  focusGuardModal: { visible: boolean; interruptions: number };
-  showFocusGuardModal: (interruptions: number) => void;
-  hideFocusGuardModal: () => void;
+  // RF-02 (refinado): feature opcional. Cuando está activo, las interrupciones se
+  // cuentan en silencio durante la sesión y se muestran en el resumen post-sesión.
+  focusGuardEnabled: boolean;
+  setFocusGuardEnabled: (enabled: boolean) => void;
+
+  // RF-02 (refinado): feature opcional independiente. Cuando está activo, si el
+  // usuario sale de la app con el cronómetro corriendo, recibe una notificación
+  // "Tu sesión de estudio sigue activa". Se cancela al volver.
+  awayNotificationEnabled: boolean;
+  setAwayNotificationEnabled: (enabled: boolean) => void;
+
+  // Resumen mostrado al parar el cronómetro (solo si focusGuardEnabled)
+  sessionSummary: {
+    visible: boolean;
+    subjectName: string;
+    durationSeconds: number;
+    interruptions: number;
+  };
+  showSessionSummary: (data: { subjectName: string; durationSeconds: number; interruptions: number }) => void;
+  hideSessionSummary: () => void;
 
   // Cola offline (RNF-03)
   pendingQueue: PendingSession[];
@@ -100,11 +116,17 @@ export const useAppStore = create<AppStore>()(
       addInterruption: () => set((s) => ({ interruptions: s.interruptions + 1 })),
       resetInterruptions: () => set({ interruptions: 0 }),
 
-      focusGuardModal: { visible: false, interruptions: 0 },
-      showFocusGuardModal: (interruptions) =>
-        set({ focusGuardModal: { visible: true, interruptions } }),
-      hideFocusGuardModal: () =>
-        set({ focusGuardModal: { visible: false, interruptions: 0 } }),
+      focusGuardEnabled: false,
+      setFocusGuardEnabled: (enabled) => set({ focusGuardEnabled: enabled }),
+
+      awayNotificationEnabled: false,
+      setAwayNotificationEnabled: (enabled) => set({ awayNotificationEnabled: enabled }),
+
+      sessionSummary: { visible: false, subjectName: '', durationSeconds: 0, interruptions: 0 },
+      showSessionSummary: ({ subjectName, durationSeconds, interruptions }) =>
+        set({ sessionSummary: { visible: true, subjectName, durationSeconds, interruptions } }),
+      hideSessionSummary: () =>
+        set({ sessionSummary: { visible: false, subjectName: '', durationSeconds: 0, interruptions: 0 } }),
 
       pendingQueue: [],
       addPendingSession: (session) =>
@@ -143,6 +165,9 @@ export const useAppStore = create<AppStore>()(
         // Persiste cola y caché para RNF-03
         pendingQueue: state.pendingQueue,
         cachedSubjects: state.cachedSubjects,
+        // Persiste la preferencia del usuario sobre el guard de concentración
+        focusGuardEnabled: state.focusGuardEnabled,
+        awayNotificationEnabled: state.awayNotificationEnabled,
       }),
     }
   )

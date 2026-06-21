@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, AppState } from 'react-native';
 import { TaskCard } from '@/components/TaskCard';
 import { EditNameSheet } from '@/components/EditNameSheet';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -88,11 +88,21 @@ export default function HomeScreen() {
   };
 
   // Inicia el interval y sincroniza el tiempo real desde sessionStartTime (RNF-04)
+  // Además: al volver de background recalculamos el tiempo real (setInterval
+  // se suspende mientras la app no está activa).
   useEffect(() => {
     if (!activeSubjectId) return;
     recoverTimer();
     const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') recoverTimer();
+    });
+
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
   }, [activeSubjectId]);
 
   const saveSession = async (subjectId: string, start: Date, durationSeconds: number) => {
@@ -129,6 +139,20 @@ export default function HomeScreen() {
     }
   };
 
+  // Si el usuario activó "Avisos de concentración" y la sesión duró >= 60s,
+  // mostramos el resumen post-sesión con la cantidad de interrupciones (RF-02 refinado).
+  const SUMMARY_MIN_SECONDS = 60;
+  const maybeShowSummary = (subjId: string, duration: number) => {
+    const s = useAppStore.getState();
+    if (!s.focusGuardEnabled || duration < SUMMARY_MIN_SECONDS) return;
+    const subjectName = subjects.find((x) => x.id === subjId)?.name ?? 'Sesión';
+    s.showSessionSummary({
+      subjectName,
+      durationSeconds: duration,
+      interruptions: s.interruptions,
+    });
+  };
+
   const toggleTimer = async (subjectId: string) => {
     if (activeSubjectId === subjectId) {
       if (sessionStartTime) {
@@ -136,6 +160,7 @@ export default function HomeScreen() {
           (new Date().getTime() - new Date(sessionStartTime).getTime()) / 1000
         );
         await saveSession(subjectId, new Date(sessionStartTime), duration);
+        maybeShowSummary(subjectId, duration);
       }
       stopTimer();
     } else {
@@ -144,6 +169,7 @@ export default function HomeScreen() {
           (new Date().getTime() - new Date(sessionStartTime).getTime()) / 1000
         );
         await saveSession(activeSubjectId, new Date(sessionStartTime), duration);
+        maybeShowSummary(activeSubjectId, duration);
       }
       startTimer(subjectId);
     }

@@ -4,53 +4,70 @@ import * as Notifications from 'expo-notifications';
 import { useAppStore } from '@/store/useAppStore';
 import { isFocusGuardSuspended } from '@/utils/focusGuard';
 
-// Si la app vuelve antes de este tiempo, no contamos la interrupción.
-// Cubre: pantalla apagada y prendida rápido, swipe accidental del control center,
-// banners de permisos, etc.
+// RF-02 (refinado v2). Dos features opcionales independientes:
+//
+//   1. focusGuardEnabled (toggle "Resumen al terminar la sesión"):
+//      Cuenta cada salida en silencio. El feedback se da al detener el timer
+//      en el SessionSummaryModal.
+//
+//   2. awayNotificationEnabled (toggle "Avisarme cuando salga"):
+//      Dispara "Tu sesión de estudio sigue activa" si salís con el timer
+//      corriendo. Se cancela al volver.
+//
+// IMPORTANTE sobre el grace period (GRACE_MS):
+// El thread de JS se suspende en background, así que un setTimeout(GRACE_MS) NO
+// se ejecuta hasta que la app vuelve a foreground — y para ese momento ya da
+// igual. Por eso aplicamos el grace de dos formas distintas:
+//
+//   • Para el contador: medimos el tiempo real entre el background y la vuelta.
+//     Si fue > GRACE_MS, cuenta como interrupción.
+//   • Para la notif: la programamos vía el SO con TIME_INTERVAL trigger que
+//     respeta el delay aunque JS esté suspendido. Si volvemos antes, la
+//     cancelamos.
+
 const GRACE_MS = 2000;
 
 export function useFocusGuard() {
+  const backgroundedAtRef = useRef<number | null>(null);
   const notifIdRef = useRef<string | null>(null);
-  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState) => {
       const store = useAppStore.getState();
 
-      if (nextState === 'background' && store.activeSubjectId && !isFocusGuardSuspended()) {
-        // Esperamos GRACE_MS antes de contar la interrupción. Si volvés antes,
-        // el timer se cancela y no pasa nada.
-        pendingTimerRef.current = setTimeout(async () => {
-          pendingTimerRef.current = null;
-          // Re-chequeo al disparar: la sesión sigue activa y nada se suspendió mientras tanto.
-          const s = useAppStore.getState();
-          if (!s.activeSubjectId || isFocusGuardSuspended()) return;
+      if (nextState === 'background') {
+        const shouldTrack =
+          !!store.activeSubjectId &&
+          !isFocusGuardSuspended() &&
+          (store.focusGuardEnabled || store.awayNotificationEnabled);
 
-          s.addInterruption();
+        if (!shouldTrack) {
+          backgroundedAtRef.current = null;
+          return;
+        }
 
-          // Android 8+ requiere channelId obligatorio, sin él la notificación se descarta
-          const id = await Notifications.scheduleNotificationAsync({
-            content: {
-              title: '⏱ Seguís en sesión de estudio',
-              body: 'Volvé a la app y mantené la concentración. ¡Podés lograrlo!',
-            },
-            trigger: Platform.OS === 'android'
-              ? { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: 'focus-guard' }
-              : null,
-          });
-          notifIdRef.current = id;
-        }, GRACE_MS);
+        backgroundedAtRef.current = Date.now();
+
+        if (store.awayNotificationEnabled) {
+          try {
+            const id = await Notifications.scheduleNotificationAsync({
+              content: { title: 'Tu sesión de estudio sigue activa' },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                seconds: Math.ceil(GRACE_MS / 1000),
+                ...(Platform.OS === 'android' ? { channelId: 'focus-guard' } : {}),
+              },
+            });
+            notifIdRef.current = id;
+          } catch {
+            // permission denied o canal no creado: ignorar
+          }
+        }
       }
 
       if (nextState === 'active') {
-        // Si volviste antes del GRACE, cancelo lo pendiente — no fue interrupción real.
-        if (pendingTimerRef.current) {
-          clearTimeout(pendingTimerRef.current);
-          pendingTimerRef.current = null;
-        }
-
+        // Cancelar/dismiss la notif (esté programada o ya disparada)
         if (notifIdRef.current) {
-          // Cancela si aún no disparó, descarta si ya está en la bandeja
           await Promise.allSettled([
             Notifications.cancelScheduledNotificationAsync(notifIdRef.current),
             Notifications.dismissNotificationAsync(notifIdRef.current),
@@ -58,9 +75,20 @@ export function useFocusGuard() {
           notifIdRef.current = null;
         }
 
-        const current = useAppStore.getState();
-        if (current.activeSubjectId && current.interruptions > 0) {
-          current.showFocusGuardModal(current.interruptions);
+        // Contar interrupción según el tiempo real afuera
+        if (backgroundedAtRef.current != null) {
+          const elapsed = Date.now() - backgroundedAtRef.current;
+          backgroundedAtRef.current = null;
+
+          const s = useAppStore.getState();
+          if (
+            elapsed > GRACE_MS &&
+            s.focusGuardEnabled &&
+            s.activeSubjectId &&
+            !isFocusGuardSuspended()
+          ) {
+            s.addInterruption();
+          }
         }
       }
     });

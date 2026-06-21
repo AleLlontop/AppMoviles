@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -23,6 +23,10 @@ export default function MoreScreen() {
   const router = useRouter();
   const user = useUser();
   const { theme, setTheme } = useAppStore();
+  const focusGuardEnabled = useAppStore((s) => s.focusGuardEnabled);
+  const setFocusGuardEnabled = useAppStore((s) => s.setFocusGuardEnabled);
+  const awayNotificationEnabled = useAppStore((s) => s.awayNotificationEnabled);
+  const setAwayNotificationEnabled = useAppStore((s) => s.setAwayNotificationEnabled);
   const c = useThemeColors();
 
   const isLoggedIn = !!user;
@@ -124,6 +128,39 @@ export default function MoreScreen() {
 
         <View style={[styles.settingsGroup, { backgroundColor: c.surface }]}>
           <SettingRow title="Tema" value={currentThemeLabel} showBorder={false} onPress={() => setShowThemeModal(true)} />
+        </View>
+
+        {/* RF-02 (refinado): dos toggles opcionales independientes */}
+        <View style={[styles.settingsGroup, { backgroundColor: c.surface }]}>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={[styles.settingTitle, { color: c.textPrimary }]}>Resumen al terminar la sesión</Text>
+              <Text style={[styles.toggleDesc, { color: c.textSecondary }]}>
+                Al detener el cronómetro, mostrar cuántas veces saliste de la app durante la sesión.
+              </Text>
+            </View>
+            <Switch
+              value={focusGuardEnabled}
+              onValueChange={setFocusGuardEnabled}
+              trackColor={{ false: c.separator, true: c.accentStrong }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+          <View style={[styles.separator, { backgroundColor: c.border }]} />
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={[styles.settingTitle, { color: c.textPrimary }]}>Avisarme cuando salga</Text>
+              <Text style={[styles.toggleDesc, { color: c.textSecondary }]}>
+                Si salís de la app con el cronómetro corriendo, recibir una notificación recordándolo.
+              </Text>
+            </View>
+            <Switch
+              value={awayNotificationEnabled}
+              onValueChange={setAwayNotificationEnabled}
+              trackColor={{ false: c.separator, true: c.accentStrong }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </View>
 
         <View style={[styles.settingsGroup, { backgroundColor: c.surface }]}>
@@ -238,6 +275,8 @@ const styles = StyleSheet.create({
 
   settingsGroup:{ borderRadius: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
   settingItem:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20, paddingHorizontal: 20 },
+  toggleRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 20 },
+  toggleDesc:   { fontSize: 12, marginTop: 4, lineHeight: 17 },
   settingTitle: { fontSize: 18, fontWeight: '500' },
   settingRight: { flexDirection: 'row', alignItems: 'center' },
   settingValue: { fontSize: 16 },

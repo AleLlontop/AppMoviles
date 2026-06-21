@@ -12,7 +12,7 @@ import { supabase } from '@/utils/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { useFocusGuard } from '@/hooks/use-focus-guard';
 import { useGlobalPresence } from '@/hooks/use-global-presence';
-import FocusGuardModal from '@/components/FocusGuardModal';
+import SessionSummaryModal from '@/components/SessionSummaryModal';
 
 // Cuando la app está en primer plano y llega una notificación, no la mostramos
 // (no debería pasar, pero por seguridad)
@@ -90,7 +90,7 @@ export default function RootLayout() {
         <Stack.Screen name="group/[id]/manage" options={{ headerShown: false }} />
         <Stack.Screen name="group/[id]/stats" options={{ headerShown: false }} />
       </Stack>
-      <FocusGuardModal />
+      <SessionSummaryModal />
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );
