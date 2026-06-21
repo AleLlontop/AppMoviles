@@ -137,7 +137,67 @@ export const adaptStatisticsData = (
     activityHeatmap: buckets.map(v => (v > 0 ? 2 : 0)),
   };
 
-  // 5. History
+  // 5. Day summary — datos específicos del día tocado (no del período entero).
+  // El widget de stats abajo del calendario lo consume.
+  const targetDayStr = targetDate.format('YYYY-MM-DD');
+  const prevDay = targetDate.subtract(1, 'day');
+  const prevDayStr = prevDay.format('YYYY-MM-DD');
+
+  const daySessions = sessions.filter(
+    (s: any) => dayjs(s.start_time).format('YYYY-MM-DD') === targetDayStr
+  );
+  const prevDaySessions = sessions.filter(
+    (s: any) => dayjs(s.start_time).format('YYYY-MM-DD') === prevDayStr
+  );
+
+  const dayTotal = daySessions.reduce((sum: number, s: any) => sum + (s.duration || 0), 0);
+  const prevDayTotal = prevDaySessions.reduce(
+    (sum: number, s: any) => sum + (s.duration || 0),
+    0
+  );
+
+  const dayMaxConcentration = daySessions.length
+    ? daySessions.reduce((m: number, s: any) => Math.max(m, s.duration || 0), 0)
+    : 0;
+
+  const sortedDay = [...daySessions].sort(
+    (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+  );
+  const dayStartTime = sortedDay.length ? sortedDay[0].start_time : null;
+  const dayEndTime = sortedDay.length
+    ? sortedDay[sortedDay.length - 1].end_time || sortedDay[sortedDay.length - 1].start_time
+    : null;
+
+  // 8 buckets de 3hs cubriendo 24hs: 0-3, 3-6, 6-9, 9-12, 12-15, 15-18, 18-21, 21-24
+  const bucketForHour = (h: number) => Math.max(0, Math.min(7, Math.floor(h / 3)));
+  const todayBuckets = new Array(8).fill(0);
+  daySessions.forEach((s: any) => {
+    todayBuckets[bucketForHour(dayjs(s.start_time).hour())] += s.duration || 0;
+  });
+  const prevBuckets = new Array(8).fill(0);
+  prevDaySessions.forEach((s: any) => {
+    prevBuckets[bucketForHour(dayjs(s.start_time).hour())] += s.duration || 0;
+  });
+
+  // Normalizamos los dos arrays con el mismo máximo para comparar visualmente
+  const maxDayBucket = Math.max(...todayBuckets, ...prevBuckets, 1);
+  const todayBars = todayBuckets.map((v) => Math.round((v / maxDayBucket) * 50));
+  const prevBars = prevBuckets.map((v) => Math.round((v / maxDayBucket) * 50));
+
+  const daySummary = {
+    dateLabel: targetDate.locale('es').format('ddd., D MMM.'),
+    totalStudyTime: dayTotal,
+    maxConcentration: dayMaxConcentration,
+    startTime: dayStartTime,
+    endTime: dayEndTime,
+    comparisonPreviousDay: dayTotal - prevDayTotal,
+    todayBars,
+    prevBars,
+    hasData: daySessions.length > 0,
+    hasPrevData: prevDaySessions.length > 0,
+  };
+
+  // 6. History
   const history: any[] = periodSessions.map((s: any) => ({
     type: 'session',
     time: dayjs(s.start_time).format('HH:mm'),
@@ -165,6 +225,7 @@ export const adaptStatisticsData = (
     },
     distribution,
     sessionDetail,
+    daySummary,
     history,
   };
 };

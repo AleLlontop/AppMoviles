@@ -15,9 +15,9 @@ export function formatHM(seconds: number) {
   return `${m}m`;
 }
 
-export function formatTimeOnly(isoString: string) {
-  const date = dayjs(isoString);
-  return date.format('H[h] mm[m]');
+export function formatTimeOnly(isoString: string | null | undefined) {
+  if (!isoString) return '—';
+  return dayjs(isoString).format('HH:mm');
 }
 
 export function formatDateLabel(isoString: string) {

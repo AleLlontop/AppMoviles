@@ -118,7 +118,7 @@ export default function EstadisticasScreen() {
     );
   }
 
-  const { calendar, summary, distribution, history } = statsData;
+  const { calendar, summary, daySummary, distribution, history } = statsData;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.background }} edges={['top']}>
@@ -161,7 +161,7 @@ export default function EstadisticasScreen() {
             onDayPress={handleDayPress}
             selectedTab={selectedTab}
           />
-          <StatsChartWidget summary={summary} />
+          <StatsChartWidget daySummary={daySummary} />
           <DonutChartsWidget distribution={distribution} />
           <HistoryList history={history} />
         </View>
