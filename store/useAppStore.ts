@@ -83,6 +83,14 @@ interface AppStore {
   groupPresence: Record<string, PresenceMap>;
   setGroupPresence: (groupId: string, map: PresenceMap) => void;
   clearGroupPresence: (groupId: string) => void;
+
+  // Modo presentación: inyecta usuarios fake como "online" para que la app
+  // se vea poblada en una demo. Se aplica solo local (no afecta a otros cels).
+  presentationModeEnabled: boolean;
+  setPresentationModeEnabled: (enabled: boolean) => void;
+  demoGroupPresence: Record<string, PresenceMap>;
+  setDemoGroupPresence: (groupId: string, map: PresenceMap) => void;
+  clearAllDemoPresence: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -153,6 +161,13 @@ export const useAppStore = create<AppStore>()(
           delete next[groupId];
           return { groupPresence: next };
         }),
+
+      presentationModeEnabled: false,
+      setPresentationModeEnabled: (enabled) => set({ presentationModeEnabled: enabled }),
+      demoGroupPresence: {},
+      setDemoGroupPresence: (groupId, map) =>
+        set((s) => ({ demoGroupPresence: { ...s.demoGroupPresence, [groupId]: map } })),
+      clearAllDemoPresence: () => set({ demoGroupPresence: {} }),
     }),
     {
       name: 'app-store',
@@ -168,6 +183,7 @@ export const useAppStore = create<AppStore>()(
         // Persiste la preferencia del usuario sobre el guard de concentración
         focusGuardEnabled: state.focusGuardEnabled,
         awayNotificationEnabled: state.awayNotificationEnabled,
+        presentationModeEnabled: state.presentationModeEnabled,
       }),
     }
   )

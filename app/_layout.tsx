@@ -12,6 +12,7 @@ import { supabase } from '@/utils/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { useFocusGuard } from '@/hooks/use-focus-guard';
 import { useGlobalPresence } from '@/hooks/use-global-presence';
+import { useDemoPresence } from '@/hooks/use-demo-presence';
 import SessionSummaryModal from '@/components/SessionSummaryModal';
 
 // Cuando la app está en primer plano y llega una notificación, no la mostramos
@@ -42,6 +43,8 @@ export default function RootLayout() {
   useFocusGuard();
   // RF-12/13: mantiene mi presencia activa en todos mis grupos mientras la app está abierta
   useGlobalPresence();
+  // Demo: inyecta usuarios fake como "online" si el modo presentación está prendido
+  useDemoPresence();
 
   useEffect(() => {
     // Pide permisos de notificación al usuario

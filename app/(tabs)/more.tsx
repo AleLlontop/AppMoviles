@@ -27,6 +27,8 @@ export default function MoreScreen() {
   const setFocusGuardEnabled = useAppStore((s) => s.setFocusGuardEnabled);
   const awayNotificationEnabled = useAppStore((s) => s.awayNotificationEnabled);
   const setAwayNotificationEnabled = useAppStore((s) => s.setAwayNotificationEnabled);
+  const presentationModeEnabled = useAppStore((s) => s.presentationModeEnabled);
+  const setPresentationModeEnabled = useAppStore((s) => s.setPresentationModeEnabled);
   const c = useThemeColors();
 
   const isLoggedIn = !!user;
@@ -163,6 +165,25 @@ export default function MoreScreen() {
           </View>
         </View>
 
+        {/* Sección Avanzado: features para demos / debug */}
+        <Text style={[styles.sectionTitle, { color: c.textSecondary }]}>AVANZADO</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: c.surface }]}>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={[styles.settingTitle, { color: c.textPrimary }]}>Modo presentación</Text>
+              <Text style={[styles.toggleDesc, { color: c.textSecondary }]}>
+                Solo para mostrar la app. Inyecta usuarios fake conectados en tus grupos. El cambio es local a tu celular y rota cada 30 segundos.
+              </Text>
+            </View>
+            <Switch
+              value={presentationModeEnabled}
+              onValueChange={setPresentationModeEnabled}
+              trackColor={{ false: c.separator, true: c.accentStrong }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
         <View style={[styles.settingsGroup, { backgroundColor: c.surface }]}>
           {isLoggedIn ? (
             <SettingRow title="Cerrar sesión" showBorder={false} onPress={handleLogout} destructive />
@@ -277,6 +298,7 @@ const styles = StyleSheet.create({
   settingItem:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20, paddingHorizontal: 20 },
   toggleRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 20 },
   toggleDesc:   { fontSize: 12, marginTop: 4, lineHeight: 17 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginTop: 24, marginBottom: 8, marginLeft: 4 },
   settingTitle: { fontSize: 18, fontWeight: '500' },
   settingRight: { flexDirection: 'row', alignItems: 'center' },
   settingValue: { fontSize: 16 },
