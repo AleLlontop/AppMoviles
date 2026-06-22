@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Keyboard, Platform, Pressable, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,7 +10,7 @@ import { useUser } from '@/hooks/use-user';
 type Summary = {
   id: string;
   created_at: string;
-  tittle: string; // Columna 'tittle' en Supabase
+  tittle: string;
   content: string | null;
   dashboard_item_id: string;
 };
@@ -23,10 +23,8 @@ export default function ResumenesScreen() {
 
   const [loading, setLoading] = useState(true);
   const [summaries, setSummaries] = useState<Summary[]>([]);
-  
+
   // Modal states
-  const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
   const [readerVisible, setReaderVisible] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -39,22 +37,6 @@ export default function ResumenesScreen() {
   // Validation alert states
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
-
-  // Altura del teclado para empujar el sheet (KeyboardAvoidingView dentro de
-  // Modal es flaky en Android — patrón ya usado en EditNameSheet).
-  const [kbHeight, setKbHeight] = useState(0);
-  useEffect(() => {
-    const isVisible = createModalVisible || editModalVisible;
-    if (!isVisible) return;
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const show = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates?.height ?? 0));
-    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, [createModalVisible, editModalVisible]);
 
   useFocusEffect(
     useCallback(() => {
@@ -81,45 +63,23 @@ export default function ResumenesScreen() {
     }
   };
 
-  const openCreateModal = () => {
-    setSummaryTitle('');
-    setSummaryContent('');
-    setCreateModalVisible(true);
-  };
-
   const openReader = (summary: Summary) => {
     setSelectedSummary(summary);
+    setSummaryTitle(summary.tittle);
+    setSummaryContent(summary.content || '');
     setReaderVisible(true);
-  };
-
-  const openEditModal = () => {
-    if (!selectedSummary) return;
-    setSummaryTitle(selectedSummary.tittle);
-    setSummaryContent(selectedSummary.content || '');
-    setReaderVisible(false);
-    setEditModalVisible(true);
   };
 
   const handleCreateSummary = async () => {
     if (!user || !id) return;
 
-    const trimmedTitle = summaryTitle.trim();
-    if (!trimmedTitle) {
-      setAlertMessage('El título del resumen no puede estar vacío.');
-      setShowAlert(true);
-      return;
-    }
-    if (trimmedTitle.length < 3) {
-      setAlertMessage('El título debe tener al menos 3 caracteres.');
-      setShowAlert(true);
-      return;
-    }
+    const defaultTitle = "Nuevo Resumen";
 
     try {
       setUpdating(true);
 
-      // 1. Obtener o crear dashboard_item para este tablero
       let dashboardItemId = null;
+
       const { data: itemData, error: itemError } = await supabase
         .from('dashboard_items')
         .select('id')
@@ -133,25 +93,40 @@ export default function ResumenesScreen() {
       } else {
         const { data: newItem, error: createError } = await supabase
           .from('dashboard_items')
-          .insert([{ dashboard_id: id, user_id: user.id }])
+          .insert([
+            {
+              dashboard_id: id,
+              user_id: user.id,
+            },
+          ])
           .select()
           .single();
+
         if (createError) throw createError;
+
         dashboardItemId = newItem.id;
       }
 
-      // 2. Insertar el resumen (usando tittle)
-      const { error: summaryError } = await supabase
+      const { data: newSummary, error: summaryError } = await supabase
         .from('summaries')
-        .insert([{
-          tittle: trimmedTitle,
-          content: summaryContent.trim(),
-          dashboard_item_id: dashboardItemId
-        }]);
+        .insert([
+          {
+            tittle: defaultTitle,
+            content: '',
+            dashboard_item_id: dashboardItemId,
+          },
+        ])
+        .select()
+        .single();
 
       if (summaryError) throw summaryError;
 
-      setCreateModalVisible(false);
+      // Abrimos directamente el lector
+      setSelectedSummary(newSummary);
+      setSummaryTitle(newSummary.tittle);
+      setSummaryContent('');
+      setReaderVisible(true);
+
       fetchSummaries();
     } catch (error) {
       console.error('Error creating summary:', error);
@@ -163,19 +138,7 @@ export default function ResumenesScreen() {
 
   const handleEditSummary = async () => {
     if (!selectedSummary) return;
-
     const trimmedTitle = summaryTitle.trim();
-    if (!trimmedTitle) {
-      setAlertMessage('El título del resumen no puede estar vacío.');
-      setShowAlert(true);
-      return;
-    }
-    if (trimmedTitle.length < 3) {
-      setAlertMessage('El título debe tener al menos 3 caracteres.');
-      setShowAlert(true);
-      return;
-    }
-
     try {
       setUpdating(true);
       const { error } = await supabase
@@ -187,8 +150,6 @@ export default function ResumenesScreen() {
         .eq('id', selectedSummary.id);
 
       if (error) throw error;
-
-      setEditModalVisible(false);
       fetchSummaries();
     } catch (error) {
       console.error('Error updating summary:', error);
@@ -236,7 +197,7 @@ export default function ResumenesScreen() {
       <TouchableOpacity
         style={{ backgroundColor: c.accent }}
         className="w-full py-4 rounded-xl flex-row justify-center items-center"
-        onPress={openCreateModal}
+        onPress={handleCreateSummary}
       >
         <Text style={{ color: c.textPrimary }} className="text-base font-bold">Crear Resumen</Text>
       </TouchableOpacity>
@@ -288,152 +249,16 @@ export default function ResumenesScreen() {
         </View>
       )}
 
-      {/* Botón flotante para crear resumen en color Lavanda */}
+      {/* Botón flotante para crear resumen */}
       {!loading && summaries.length > 0 && (
         <TouchableOpacity
           style={{ backgroundColor: c.accent, shadowColor: c.accent, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5 }}
           className="absolute bottom-10 right-5 w-14 h-14 rounded-full items-center justify-center"
-          onPress={openCreateModal}
+          onPress={handleCreateSummary}
         >
           <Ionicons name="add" size={32} color={c.textPrimary} />
         </TouchableOpacity>
       )}
-
-      {/* Modal para Crear Resumen */}
-      <Modal visible={createModalVisible} transparent animationType="slide" onRequestClose={() => !updating && setCreateModalVisible(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !updating && setCreateModalVisible(false)}>
-          <Pressable
-            style={{
-              backgroundColor: c.surface,
-              paddingBottom: 40 + kbHeight,
-            }}
-            className="rounded-t-3xl p-6 pt-2"
-            onPress={(e) => e.stopPropagation()}
-          >
-              <View className="items-center mb-6 mt-2">
-                <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
-              </View>
-              
-              <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-4">
-                Crear Resumen
-              </Text>
-
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
-                Título
-              </Text>
-              <TextInput
-                style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-3 text-base"
-                placeholder="Ej: Apuntes de Termodinámica - Clase 1"
-                placeholderTextColor={c.textSecondary}
-                value={summaryTitle}
-                onChangeText={setSummaryTitle}
-              />
-
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
-                Contenido
-              </Text>
-              <TextInput
-                style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-5 text-base h-36"
-                placeholder="Escribe o pega tu resumen aquí..."
-                placeholderTextColor={c.textSecondary}
-                value={summaryContent}
-                onChangeText={setSummaryContent}
-                multiline
-              />
-
-              <TouchableOpacity
-                style={{ backgroundColor: c.accent }}
-                className="w-full py-4 rounded-xl flex-row justify-center items-center mb-4"
-                onPress={handleCreateSummary}
-                disabled={updating}
-              >
-                {updating ? (
-                  <ActivityIndicator color={c.textPrimary} />
-                ) : (
-                  <Text style={{ color: c.textPrimary }} className="text-base font-bold">Guardar Resumen</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                className="w-full py-3 flex-row justify-center items-center"
-                onPress={() => setCreateModalVisible(false)}
-                disabled={updating}
-              >
-                <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
-              </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Modal para Editar Resumen */}
-      <Modal visible={editModalVisible} transparent animationType="slide" onRequestClose={() => !updating && setEditModalVisible(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !updating && setEditModalVisible(false)}>
-          <Pressable
-            style={{
-              backgroundColor: c.surface,
-              paddingBottom: 40 + kbHeight,
-            }}
-            className="rounded-t-3xl p-6 pt-2"
-            onPress={(e) => e.stopPropagation()}
-          >
-              <View className="items-center mb-6 mt-2">
-                <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
-              </View>
-              
-              <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-4">
-                Editar Resumen
-              </Text>
-
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
-                Título
-              </Text>
-              <TextInput
-                style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-3 text-base"
-                placeholder="Título del resumen"
-                placeholderTextColor={c.textSecondary}
-                value={summaryTitle}
-                onChangeText={setSummaryTitle}
-              />
-
-              <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-1 ml-1">
-                Contenido
-              </Text>
-              <TextInput
-                style={{ backgroundColor: c.background, color: c.textPrimary }}
-                className="p-4 rounded-xl mb-5 text-base h-36"
-                placeholder="Contenido del resumen"
-                placeholderTextColor={c.textSecondary}
-                value={summaryContent}
-                onChangeText={setSummaryContent}
-                multiline
-              />
-
-              <TouchableOpacity
-                style={{ backgroundColor: c.accent }}
-                className="w-full py-4 rounded-xl flex-row justify-center items-center mb-4"
-                onPress={handleEditSummary}
-                disabled={updating}
-              >
-                {updating ? (
-                  <ActivityIndicator color={c.textPrimary} />
-                ) : (
-                  <Text style={{ color: c.textPrimary }} className="text-base font-bold">Guardar Cambios</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                className="w-full py-3 flex-row justify-center items-center"
-                onPress={() => setEditModalVisible(false)}
-                disabled={updating}
-              >
-                <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
-              </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* Modal de Lector Detallado (Pantalla Completa) */}
       <Modal visible={readerVisible} transparent animationType="slide" onRequestClose={() => setReaderVisible(false)}>
@@ -443,10 +268,17 @@ export default function ResumenesScreen() {
             <TouchableOpacity onPress={() => setReaderVisible(false)} className="p-1">
               <Ionicons name="close" size={24} color={c.textPrimary} />
             </TouchableOpacity>
-            
+
             <View className="flex-row items-center gap-3">
-              <TouchableOpacity onPress={openEditModal} className="p-1">
-                <Ionicons name="pencil" size={20} color={c.accentStrong} />
+              <TouchableOpacity
+                onPress={handleEditSummary}
+                className="p-1"
+              >
+                <Ionicons
+                  name="save-outline"
+                  size={22}
+                  color={c.accent}
+                />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setConfirmDeleteVisible(true)} className="p-1">
                 <Ionicons name="trash-outline" size={20} color="#EF4444" />
@@ -456,13 +288,29 @@ export default function ResumenesScreen() {
 
           {selectedSummary && (
             <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 60 }} showsVerticalScrollIndicator={true}>
-              <Text style={{ color: c.textPrimary }} className="text-3xl font-extrabold mb-6">
-                {selectedSummary.tittle}
-              </Text>
-              
-              <Text style={{ color: c.textPrimary, fontSize: 16, lineHeight: 26 }} className="font-medium text-justify">
-                {selectedSummary.content || 'Sin contenido de texto.'}
-              </Text>
+              <TextInput
+                style={{ color: c.textPrimary }}
+                className="text-3xl font-extrabold mb-6 p-0"
+                value={summaryTitle}
+                onChangeText={setSummaryTitle}
+                placeholder="Título del resumen..."
+                placeholderTextColor={c.textSecondary}
+              />
+
+              <TextInput
+                style={{
+                  color: c.textPrimary,
+                  fontSize: 16,
+                  lineHeight: 26,
+                  minHeight: 450,
+                  textAlignVertical: 'top'
+                }}
+                multiline
+                value={summaryContent}
+                onChangeText={setSummaryContent}
+                placeholder="Empieza a escribir..."
+                placeholderTextColor={c.textSecondary}
+              />
             </ScrollView>
           )}
         </SafeAreaView>
@@ -504,7 +352,7 @@ export default function ResumenesScreen() {
         <View className="flex-1 items-center justify-center p-8" style={{ backgroundColor: c.modalOverlay }}>
           <View style={{ backgroundColor: c.modalBg, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 25 }} className="w-full max-w-sm rounded-[32px] p-8 items-center">
             <Text style={{ color: c.textPrimary }} className="text-2xl font-bold mb-4 text-center">
-              Crear Resumen
+              Resumen
             </Text>
             <Text style={{ color: c.textSecondary }} className="text-base text-center mb-6 leading-5">
               {alertMessage}
