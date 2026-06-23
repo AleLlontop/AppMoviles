@@ -15,7 +15,7 @@ type TaskOption = {
 
 type Task = {
   id: string;
-  quesion: string; // Columna 'quesion' en Supabase
+  question: string;
   task_type: 'multiple_choice' | 'open_answer';
   task_options: TaskOption[];
 };
@@ -242,7 +242,7 @@ export default function QuizScreen() {
             return (
               <View key={task.id} style={{ backgroundColor: c.surface }} className="p-5 rounded-2xl mb-4">
                 <Text style={{ color: c.textPrimary }} className="text-base font-bold mb-3">
-                  {idx + 1}. {task.quesion}
+                  {idx + 1}. {task.question}
                 </Text>
                 
                 {isMC ? (
@@ -317,7 +317,7 @@ export default function QuizScreen() {
               </Text>
             </View>
             <Text style={{ color: c.textPrimary }} className="text-2xl font-extrabold mb-4">
-              {currentTask.quesion}
+              {currentTask.question}
             </Text>
           </View>
 

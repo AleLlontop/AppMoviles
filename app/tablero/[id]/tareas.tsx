@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Keyboard, Platform, Pressable, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Keyboard, Platform, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { supabase } from '@/utils/supabase';
 import { useUser } from '@/hooks/use-user';
+import { ConfirmModal } from '@/components/ConfirmModal';
 
 type TaskOption = {
   id: string;
@@ -15,7 +16,7 @@ type TaskOption = {
 
 type Task = {
   id: string;
-  quesion: string; // Columna 'quesion' en Supabase
+  question: string;
   task_type: 'multiple_choice' | 'open_answer';
   task_options: TaskOption[];
 };
@@ -44,6 +45,8 @@ export default function TareasScreen() {
 
   // Mostrar/ocultar respuestas en la lista
   const [showAnswers, setShowAnswers] = useState(true);
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Altura del teclado para empujar el sheet
   const [kbHeight, setKbHeight] = useState(0);
@@ -98,7 +101,7 @@ export default function TareasScreen() {
   const openEditModal = (task: Task) => {
     setEditingTaskId(task.id);
     setTaskType(task.task_type);
-    setQuestionText(task.quesion);
+    setQuestionText(task.question);
 
     if (task.task_type === 'multiple_choice') {
       const opts = task.task_options.map(o => o.text);
@@ -116,32 +119,25 @@ export default function TareasScreen() {
   };
 
   const handleDeleteTask = (taskId: string) => {
-    Alert.alert(
-      "Eliminar Pregunta",
-      "¿Estás seguro de que deseas eliminar esta pregunta? Esta acción no se puede deshacer.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setLoading(true);
-              // Borramos opciones primero por seguridad, aunque Supabase debería hacer cascade delete
-              await supabase.from('task_options').delete().eq('tasks_id', taskId);
-              const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    setConfirmDeleteId(taskId);
+  };
 
-              if (error) throw error;
-              fetchTasks();
-            } catch (error) {
-              console.error('Error deleting task:', error);
-              alert('Hubo un error al eliminar la pregunta.');
-              setLoading(false);
-            }
-          }
-        }
-      ]
-    );
+  const executeDeleteTask = async () => {
+    if (!confirmDeleteId) return;
+    try {
+      setLoading(true);
+      await supabase.from('task_options').delete().eq('tasks_id', confirmDeleteId);
+      const { error } = await supabase.from('tasks').delete().eq('id', confirmDeleteId);
+      if (error) throw error;
+      setConfirmDeleteId(null);
+      fetchTasks();
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      setConfirmDeleteId(null);
+      setAlertMessage('Hubo un error al eliminar la pregunta.');
+      setShowAlert(true);
+      setLoading(false);
+    }
   };
 
   const handleAddField = () => {
@@ -202,7 +198,7 @@ export default function TareasScreen() {
         const { error: taskError } = await supabase
           .from('tasks')
           .update({
-            quesion: trimmedQuestion,
+            question: trimmedQuestion,
             task_type: taskType
           })
           .eq('id', editingTaskId);
@@ -243,7 +239,7 @@ export default function TareasScreen() {
         const { data: taskData, error: taskError } = await supabase
           .from('tasks')
           .insert([{
-            quesion: trimmedQuestion,
+            question: trimmedQuestion,
             dashboard_item_id: dashboardItemId,
             task_type: taskType
           }])
@@ -284,7 +280,8 @@ export default function TareasScreen() {
       fetchTasks();
     } catch (error: any) {
       console.error('Error saving task:', error);
-      alert('Hubo un error al guardar la pregunta de práctica');
+      setAlertMessage('Hubo un error al guardar la pregunta de práctica.');
+      setShowAlert(true);
     } finally {
       setCreating(false);
     }
@@ -377,7 +374,7 @@ export default function TareasScreen() {
               <View style={{ backgroundColor: c.surface }} className="p-5 rounded-2xl mb-3">
                 <View className="flex-row justify-between items-start mb-2">
                   <Text style={{ color: c.textPrimary }} className="text-base font-semibold flex-1 mr-2">
-                    {item.quesion}
+                    {item.question}
                   </Text>
 
                   {/* Botones de acción y Pill de tipo de pregunta */}
@@ -585,6 +582,17 @@ export default function TareasScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ConfirmModal
+        visible={confirmDeleteId !== null}
+        title="Eliminar Pregunta"
+        description="¿Estás seguro de que deseas eliminar esta pregunta? Esta acción no se puede deshacer."
+        icon="trash-outline"
+        confirmLabel="Eliminar"
+        destructive
+        onConfirm={executeDeleteTask}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       {/* Alerta de validación */}
       <Modal transparent visible={showAlert} animationType="fade" onRequestClose={() => setShowAlert(false)}>
