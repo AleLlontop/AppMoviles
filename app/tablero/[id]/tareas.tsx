@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Keyboard, Platform, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Keyboard, Platform, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,7 +31,8 @@ export default function TareasScreen() {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // Form states
+  // Form & Edit states
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [taskType, setTaskType] = useState<'multiple_choice' | 'open_answer'>('multiple_choice');
   const [questionText, setQuestionText] = useState('');
   const [openAnswerModel, setOpenAnswerModel] = useState(''); // Respuesta sugerida para open_answer
@@ -41,8 +42,10 @@ export default function TareasScreen() {
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
 
-  // Altura del teclado para empujar el sheet (KeyboardAvoidingView dentro de
-  // Modal es flaky en Android — patrón ya usado en EditNameSheet).
+  // Mostrar/ocultar respuestas en la lista
+  const [showAnswers, setShowAnswers] = useState(true);
+
+  // Altura del teclado para empujar el sheet
   const [kbHeight, setKbHeight] = useState(0);
   useEffect(() => {
     if (!createModalVisible) return;
@@ -67,11 +70,11 @@ export default function TareasScreen() {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      // Traer tareas asociadas a este dashboard a través de dashboard_items
       const { data, error } = await supabase
         .from('tasks')
         .select('*, dashboard_items!inner(dashboard_id), task_options(*)')
-        .eq('dashboard_items.dashboard_id', id);
+        .eq('dashboard_items.dashboard_id', id)
+        .order('created_at', { ascending: true }); // Ordenado para que no salten al editar
 
       if (error) throw error;
       setTasks(data || []);
@@ -80,6 +83,65 @@ export default function TareasScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetAndCloseModal = () => {
+    setEditingTaskId(null);
+    setQuestionText('');
+    setOpenAnswerModel('');
+    setOptions(['', '']);
+    setCorrectOptionIndex(0);
+    setTaskType('multiple_choice');
+    setCreateModalVisible(false);
+  };
+
+  const openEditModal = (task: Task) => {
+    setEditingTaskId(task.id);
+    setTaskType(task.task_type);
+    setQuestionText(task.quesion);
+
+    if (task.task_type === 'multiple_choice') {
+      const opts = task.task_options.map(o => o.text);
+      const correctIdx = task.task_options.findIndex(o => o.is_correct);
+      setOptions(opts.length > 0 ? opts : ['', '']);
+      setCorrectOptionIndex(correctIdx !== -1 ? correctIdx : 0);
+      setOpenAnswerModel('');
+    } else {
+      const suggested = task.task_options.find(o => o.is_correct)?.text || '';
+      setOpenAnswerModel(suggested);
+      setOptions(['', '']);
+      setCorrectOptionIndex(0);
+    }
+    setCreateModalVisible(true);
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    Alert.alert(
+      "Eliminar Pregunta",
+      "¿Estás seguro de que deseas eliminar esta pregunta? Esta acción no se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              // Borramos opciones primero por seguridad, aunque Supabase debería hacer cascade delete
+              await supabase.from('task_options').delete().eq('tasks_id', taskId);
+              const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+
+              if (error) throw error;
+              fetchTasks();
+            } catch (error) {
+              console.error('Error deleting task:', error);
+              alert('Hubo un error al eliminar la pregunta.');
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleAddField = () => {
@@ -105,7 +167,7 @@ export default function TareasScreen() {
     setOptions(newOptions);
   };
 
-  const handleCreateTask = async () => {
+  const handleSaveTask = async () => {
     if (!user || !id) return;
 
     // Validar pregunta
@@ -133,49 +195,72 @@ export default function TareasScreen() {
 
     try {
       setCreating(true);
+      let targetTaskId = editingTaskId;
 
-      // 1. Obtener o crear dashboard_item para este tablero
-      let dashboardItemId = null;
-      const { data: itemData, error: itemError } = await supabase
-        .from('dashboard_items')
-        .select('id')
-        .eq('dashboard_id', id)
-        .limit(1);
+      if (editingTaskId) {
+        // ACTUALIZAR TAREA EXISTENTE
+        const { error: taskError } = await supabase
+          .from('tasks')
+          .update({
+            quesion: trimmedQuestion,
+            task_type: taskType
+          })
+          .eq('id', editingTaskId);
 
-      if (itemError) throw itemError;
+        if (taskError) throw taskError;
 
-      if (itemData && itemData.length > 0) {
-        dashboardItemId = itemData[0].id;
+        // Borrar opciones antiguas para insertar las nuevas
+        const { error: deleteOptionsError } = await supabase
+          .from('task_options')
+          .delete()
+          .eq('tasks_id', editingTaskId);
+
+        if (deleteOptionsError) throw deleteOptionsError;
+
       } else {
-        const { data: newItem, error: createError } = await supabase
+        // CREAR NUEVA TAREA
+        let dashboardItemId = null;
+        const { data: itemData, error: itemError } = await supabase
           .from('dashboard_items')
-          .insert([{ dashboard_id: id, user_id: user.id }])
+          .select('id')
+          .eq('dashboard_id', id)
+          .limit(1);
+
+        if (itemError) throw itemError;
+
+        if (itemData && itemData.length > 0) {
+          dashboardItemId = itemData[0].id;
+        } else {
+          const { data: newItem, error: createError } = await supabase
+            .from('dashboard_items')
+            .insert([{ dashboard_id: id, user_id: user.id }])
+            .select()
+            .single();
+          if (createError) throw createError;
+          dashboardItemId = newItem.id;
+        }
+
+        const { data: taskData, error: taskError } = await supabase
+          .from('tasks')
+          .insert([{
+            quesion: trimmedQuestion,
+            dashboard_item_id: dashboardItemId,
+            task_type: taskType
+          }])
           .select()
           .single();
-        if (createError) throw createError;
-        dashboardItemId = newItem.id;
+
+        if (taskError) throw taskError;
+        targetTaskId = taskData.id;
       }
 
-      // 2. Insertar la tarea (quesion)
-      const { data: taskData, error: taskError } = await supabase
-        .from('tasks')
-        .insert([{
-          quesion: trimmedQuestion,
-          dashboard_item_id: dashboardItemId,
-          task_type: taskType
-        }])
-        .select()
-        .single();
-
-      if (taskError) throw taskError;
-
-      // 3. Insertar opciones
-      if (taskType === 'multiple_choice') {
+      // INSERTAR OPCIONES (Aplica para ambos casos: Crear o Editar)
+      if (taskType === 'multiple_choice' && targetTaskId) {
         const insertOptions = options
           .map((text, idx) => ({
             text: text.trim(),
             is_correct: idx === correctOptionIndex,
-            tasks_id: taskData.id
+            tasks_id: targetTaskId
           }))
           .filter(opt => opt.text !== '');
 
@@ -184,28 +269,22 @@ export default function TareasScreen() {
           .insert(insertOptions);
 
         if (optionsError) throw optionsError;
-      } else if (taskType === 'open_answer' && openAnswerModel.trim()) {
-        // Guardar la respuesta sugerida como opción con is_correct = true
+      } else if (taskType === 'open_answer' && openAnswerModel.trim() && targetTaskId) {
         const { error: optionError } = await supabase
           .from('task_options')
           .insert([{
             text: openAnswerModel.trim(),
             is_correct: true,
-            tasks_id: taskData.id
+            tasks_id: targetTaskId
           }]);
         if (optionError) throw optionError;
       }
 
-      // Limpiar formulario y cerrar modal
-      setQuestionText('');
-      setOpenAnswerModel('');
-      setOptions(['', '']);
-      setCorrectOptionIndex(0);
-      setCreateModalVisible(false);
+      resetAndCloseModal();
       fetchTasks();
     } catch (error: any) {
-      console.error('Error creating task:', error);
-      alert('Hubo un error al crear la pregunta de práctica');
+      console.error('Error saving task:', error);
+      alert('Hubo un error al guardar la pregunta de práctica');
     } finally {
       setCreating(false);
     }
@@ -274,9 +353,21 @@ export default function TareasScreen() {
             </TouchableOpacity>
           </View>
 
-          <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-4 ml-1">
-            LISTADO DE PREGUNTAS
-          </Text>
+          {/* Cabecera de la lista */}
+          <View className="flex-row justify-between items-center mb-4 ml-1 pr-1">
+            <Text style={{ color: c.textSecondary }} className="text-sm font-semibold">
+              LISTADO DE PREGUNTAS
+            </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: `${c.accent}20` }}
+              className="px-3 py-1.5 rounded-full"
+              onPress={() => setShowAnswers(!showAnswers)}
+            >
+              <Text style={{ color: c.accentStrong }} className="text-xs font-bold">
+                {showAnswers ? 'Ocultar Respuestas' : 'Mostrar Respuestas'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <FlatList
             data={tasks}
@@ -288,13 +379,27 @@ export default function TareasScreen() {
                   <Text style={{ color: c.textPrimary }} className="text-base font-semibold flex-1 mr-2">
                     {item.quesion}
                   </Text>
-                  <View style={{ backgroundColor: c.background }} className="px-2 py-1 rounded-md">
-                    <Text style={{ color: c.textSecondary, fontSize: 10, fontWeight: '700' }}>
-                      {item.task_type === 'multiple_choice' ? 'MULTIPLE CHOICE' : 'RESPUESTA ABIERTA'}
-                    </Text>
+
+                  {/* Botones de acción y Pill de tipo de pregunta */}
+                  <View className="items-end">
+                    <View className="flex-row items-center mb-1 gap-2">
+                      <TouchableOpacity onPress={() => openEditModal(item)} className="p-1">
+                        <Ionicons name="pencil" size={18} color={c.accentStrong} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteTask(item.id)} className="p-1">
+                        <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ backgroundColor: c.background }} className="px-2 py-1 rounded-md">
+                      <Text style={{ color: c.textSecondary, fontSize: 10, fontWeight: '700' }}>
+                        {item.task_type === 'multiple_choice' ? 'MULTIPLE CHOICE' : 'RESP. ABIERTA'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                {item.task_type === 'multiple_choice' && (
+
+                {/* Renderizado condicional de las respuestas */}
+                {item.task_type === 'multiple_choice' && showAnswers && (
                   <View className="mt-2 pl-2">
                     {item.task_options.map((opt) => (
                       <View key={opt.id} className="flex-row items-center mt-1.5">
@@ -308,7 +413,8 @@ export default function TareasScreen() {
                     ))}
                   </View>
                 )}
-                {item.task_type === 'open_answer' && item.task_options.length > 0 && (
+
+                {item.task_type === 'open_answer' && item.task_options.length > 0 && showAnswers && (
                   <Text style={{ color: c.textSecondary }} className="text-sm italic mt-2">
                     Sugerencia: {item.task_options[0].text}
                   </Text>
@@ -330,9 +436,9 @@ export default function TareasScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Modal para Crear Pregunta */}
-      <Modal visible={createModalVisible} transparent animationType="slide" onRequestClose={() => !creating && setCreateModalVisible(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !creating && setCreateModalVisible(false)}>
+      {/* Modal para Crear / Editar Pregunta */}
+      <Modal visible={createModalVisible} transparent animationType="slide" onRequestClose={() => !creating && resetAndCloseModal()}>
+        <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => !creating && resetAndCloseModal()}>
           <Pressable
             style={{
               backgroundColor: c.surface,
@@ -344,9 +450,9 @@ export default function TareasScreen() {
               <View className="items-center mb-6 mt-2">
                 <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
               </View>
-              
+
               <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-6">
-                Crear Pregunta
+                {editingTaskId ? 'Editar Pregunta' : 'Crear Pregunta'}
               </Text>
 
               <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={true} className="mb-4">
@@ -357,7 +463,7 @@ export default function TareasScreen() {
                 <View className="flex-row mb-4">
                   <TouchableOpacity
                     onPress={() => setTaskType('multiple_choice')}
-                    style={{ 
+                    style={{
                       backgroundColor: taskType === 'multiple_choice' ? `${c.accent}20` : c.background,
                       borderColor: taskType === 'multiple_choice' ? c.accentStrong : c.border,
                       borderWidth: 1
@@ -370,7 +476,7 @@ export default function TareasScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setTaskType('open_answer')}
-                    style={{ 
+                    style={{
                       backgroundColor: taskType === 'open_answer' ? `${c.accent}20` : c.background,
                       borderColor: taskType === 'open_answer' ? c.accentStrong : c.border,
                       borderWidth: 1
@@ -396,7 +502,7 @@ export default function TareasScreen() {
                   onChangeText={setQuestionText}
                 />
 
-                {/* Campos dinámicos según el tipo de pregunta */}
+                {/* Campos dinámicos */}
                 {taskType === 'multiple_choice' ? (
                   <View className="mb-6">
                     <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">
@@ -457,19 +563,21 @@ export default function TareasScreen() {
               <TouchableOpacity
                 style={{ backgroundColor: c.accent }}
                 className="w-full py-4 rounded-xl flex-row justify-center items-center mb-4"
-                onPress={handleCreateTask}
+                onPress={handleSaveTask}
                 disabled={creating}
               >
                 {creating ? (
                   <ActivityIndicator color={c.textPrimary} />
                 ) : (
-                  <Text style={{ color: c.textPrimary }} className="text-base font-bold">Crear Pregunta</Text>
+                  <Text style={{ color: c.textPrimary }} className="text-base font-bold">
+                    {editingTaskId ? 'Guardar Cambios' : 'Crear Pregunta'}
+                  </Text>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
                 className="w-full py-3 flex-row justify-center items-center"
-                onPress={() => setCreateModalVisible(false)}
+                onPress={resetAndCloseModal}
                 disabled={creating}
               >
                 <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
@@ -483,7 +591,7 @@ export default function TareasScreen() {
         <View className="flex-1 items-center justify-center p-8" style={{ backgroundColor: c.modalOverlay }}>
           <View style={{ backgroundColor: c.modalBg, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 25 }} className="w-full max-w-sm rounded-[32px] p-8 items-center">
             <Text style={{ color: c.textPrimary }} className="text-2xl font-bold mb-4 text-center">
-              Crear Pregunta
+              {editingTaskId ? 'Editar Pregunta' : 'Crear Pregunta'}
             </Text>
             <Text style={{ color: c.textSecondary }} className="text-base text-center mb-6 leading-5">
               {alertMessage}
