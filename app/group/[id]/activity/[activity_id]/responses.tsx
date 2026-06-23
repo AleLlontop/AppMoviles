@@ -57,6 +57,8 @@ export default function ActivityResponsesScreen() {
       if (!tasksData || tasksData.length === 0) { setResults([]); return; }
 
       const taskIds = tasksData.map(t => t.id);
+
+      // Aseguramos pedir explícitamente todos los campos necesarios
       const { data: respData, error: respError } = await supabase.from('task_responses').select('*').in('task_id', taskIds);
       if (respError) throw respError;
 
@@ -78,13 +80,22 @@ export default function ActivityResponsesScreen() {
         let isCorrect = null;
         let correctOptText = '';
 
+        // Limpiamos el texto para evitar que saltos de línea invisibles rompan las comparaciones
+        const cleanAnswerText = (r.answer_text && r.answer_text.trim() !== '') ? r.answer_text.trim() : '';
+
         if (isMC) {
           usersMap[uId].mcCount++;
           const correctOpt = task.task_options.find((o: any) => o.is_correct);
-          if (correctOpt) correctOptText = correctOpt.text;
-          if (r.answer_text === correctOptText) {
-            isCorrect = true;
-            usersMap[uId].score++;
+
+          if (correctOpt) {
+            correctOptText = correctOpt.text.trim();
+            // Comparamos los textos sanitizados
+            if (cleanAnswerText === correctOptText) {
+              isCorrect = true;
+              usersMap[uId].score++;
+            } else {
+              isCorrect = false;
+            }
           } else {
             isCorrect = false;
           }
@@ -92,13 +103,13 @@ export default function ActivityResponsesScreen() {
           // Si es abierta, el score total del alumno es la suma de sus manualScores
           usersMap[uId].score += (r.score || 0);
           const suggestedOpt = task.task_options.find((o: any) => o.is_correct);
-          if (suggestedOpt) correctOptText = suggestedOpt.text;
+          if (suggestedOpt) correctOptText = suggestedOpt.text.trim();
         }
 
         usersMap[uId].answers.push({
           respId: r.id,
           question: task.question,
-          answerText: r.answer_text,
+          answerText: cleanAnswerText !== '' ? cleanAnswerText : '(Respuesta en blanco)',
           isCorrect,
           isMC,
           correctOptionText: correctOptText,
@@ -109,7 +120,7 @@ export default function ActivityResponsesScreen() {
       setResults(Object.values(usersMap).sort((a, b) => b.score - a.score));
 
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      Alert.alert('Error', 'No se pudieron cargar las respuestas: ' + e.message);
     } finally {
       setLoading(false);
     }
@@ -185,15 +196,26 @@ export default function ActivityResponsesScreen() {
                             <View className="flex-row items-start">
                               <Ionicons name={ans.isCorrect ? "checkmark-circle" : "close-circle"} size={16} color={ans.isCorrect ? "#10B981" : "#EF4444"} className="mr-2 mt-0.5" />
                               <View className="flex-1">
-                                <Text style={{ color: ans.isCorrect ? "#10B981" : "#EF4444" }} className="text-sm font-medium">{ans.answerText}</Text>
-                                {!ans.isCorrect && ans.correctOptionText && <Text style={{ color: c.textSecondary }} className="text-xs mt-1">Correcta: {ans.correctOptionText}</Text>}
+                                <Text style={{ color: ans.isCorrect ? "#10B981" : "#EF4444" }} className="text-base font-bold">
+                                  {ans.answerText}
+                                </Text>
+                                {!ans.isCorrect && ans.correctOptionText && (
+                                  <Text style={{ color: c.textSecondary }} className="text-xs mt-1">
+                                    Correcta: {ans.correctOptionText}
+                                  </Text>
+                                )}
                               </View>
                             </View>
                           ) : (
                             <View>
-                              <Text style={{ color: c.textSecondary }} className="text-sm italic">"{ans.answerText}"</Text>
+                              {/* RESPUESTA ABIERTA BLINDADA */}
+                              <View style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: c.border }}>
+                                <Text style={{ color: c.textPrimary }} className="text-base">
+                                  {ans.answerText}
+                                </Text>
+                              </View>
 
-                              {/* SECCIÓN DE CORRECCIÓN MANUAL (Solo para TASKS abiertas) */}
+                              {/* SECCIÓN DE CORRECCIÓN MANUAL */}
                               <View className="flex-row items-center mt-3 gap-2">
                                 <Text style={{ color: c.textPrimary }} className="text-sm font-bold">Nota:</Text>
                                 <TextInput
@@ -215,9 +237,9 @@ export default function ActivityResponsesScreen() {
                               </View>
 
                               {ans.correctOptionText ? (
-                                <View style={{ backgroundColor: c.surface }} className="mt-3 p-2 rounded-lg border-l-2 border-amber-500">
-                                  <Text style={{ color: c.textPrimary, fontSize: 10, fontWeight: 'bold' }}>Criterio / Sugerencia:</Text>
-                                  <Text style={{ color: c.textSecondary, fontSize: 12 }}>{ans.correctOptionText}</Text>
+                                <View style={{ backgroundColor: c.surface }} className="mt-3 p-3 rounded-lg border-l-2 border-amber-500">
+                                  <Text style={{ color: c.textPrimary, fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>Sugerencia del profesor:</Text>
+                                  <Text style={{ color: c.textSecondary, fontSize: 13 }}>{ans.correctOptionText}</Text>
                                 </View>
                               ) : null}
                             </View>
