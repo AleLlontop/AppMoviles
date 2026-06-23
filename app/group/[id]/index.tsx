@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+// IMPORTANTE: Agregamos "Stack" a la importación
+import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/use-theme-colors';
@@ -58,6 +59,7 @@ export default function GroupDetailScreen() {
 
   // Re-render cada 1s para refrescar los timers de otros usuarios.
   const [tick, setTick] = useState(0);
+
   useEffect(() => {
     const hasOthersStudying = Object.values(presence).some(
       (p) => p.is_studying && p.user_id !== user?.id
@@ -88,11 +90,14 @@ export default function GroupDetailScreen() {
   // Re-cargo al volver al detalle (e.g. después de editar el nombre).
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Memoizar el string de IDs para que el useEffect del canal no se dispare de más
+  const memberIdsString = useMemo(() => members.map((m) => m.user_id).sort().join(','), [members]);
+
   // Realtime sobre profiles (apodo / avatar / categoría) y group_members
   // (rol, entradas, salidas). Cualquier cambio dispara recarga.
   useEffect(() => {
-    if (!id || members.length === 0) return;
-    const memberIds = members.map((m) => m.user_id);
+    if (!id || !memberIdsString) return;
+
     const channel = supabase
       .channel(`group-detail:${id}`)
       .on(
@@ -101,7 +106,7 @@ export default function GroupDetailScreen() {
           event: 'UPDATE',
           schema: 'public',
           table: 'profiles',
-          filter: `user_id=in.(${memberIds.join(',')})`,
+          filter: `user_id=in.(${memberIdsString})`,
         },
         () => load()
       )
@@ -116,10 +121,11 @@ export default function GroupDetailScreen() {
         () => load()
       )
       .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id, members.map((m) => m.user_id).join(','), load]);
+  }, [id, memberIdsString, load]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -214,337 +220,341 @@ export default function GroupDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: c.background }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accentStrong} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={c.textPrimary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setOptionsVisible(true)}
-            hitSlop={10}
-            style={[styles.kebabBtn, { backgroundColor: c.separator }]}
-          >
-            <Ionicons name="ellipsis-vertical" size={18} color={c.textPrimary} />
-          </TouchableOpacity>
-        </View>
+    <>
+      {/* OCULTAMOS EL ENCABEZADO DE EXPO ROUTER */}
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={[styles.container, { backgroundColor: c.background }]} edges={['top']}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accentStrong} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header Personalizado */}
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
+              <Ionicons name="chevron-back" size={22} color={c.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setOptionsVisible(true)}
+              hitSlop={10}
+              style={[styles.kebabBtn, { backgroundColor: c.separator }]}
+            >
+              <Ionicons name="ellipsis-vertical" size={18} color={c.textPrimary} />
+            </TouchableOpacity>
+          </View>
 
-        <Text style={[styles.title, { color: c.textPrimary }]}>{group.name}</Text>
+          <Text style={[styles.title, { color: c.textPrimary }]}>{group.name}</Text>
 
-        <View style={styles.chipsRow}>
-          <View style={[styles.roleChip, { backgroundColor: `${c.accent}2E` }]}>
-            <Ionicons
-              name={isOwner ? 'star' : myRole === 'admin' ? 'shield-checkmark' : 'person'}
-              size={11}
-              color={c.accentStrong}
-            />
-            <Text style={[styles.roleChipText, { color: c.accentStrong }]}>
-              {isOwner ? 'Owner' : myRole === 'admin' ? 'Admin' : 'Miembro'}
+          <View style={styles.chipsRow}>
+            <View style={[styles.roleChip, { backgroundColor: `${c.accent}2E` }]}>
+              <Ionicons
+                name={isOwner ? 'star' : myRole === 'admin' ? 'shield-checkmark' : 'person'}
+                size={11}
+                color={c.accentStrong}
+              />
+              <Text style={[styles.roleChipText, { color: c.accentStrong }]}>
+                {isOwner ? 'Owner' : myRole === 'admin' ? 'Admin' : 'Miembro'}
+              </Text>
+            </View>
+            <Text style={[styles.membersCount, { color: c.textSecondary }]}>
+              {members.length} / {group.max_members} miembros
             </Text>
           </View>
-          <Text style={[styles.membersCount, { color: c.textSecondary }]}>
-            {members.length} / {group.max_members} miembros
-          </Text>
-        </View>
 
-        {/* Invite code */}
-        <View style={[styles.codeCard, { backgroundColor: c.surface, borderColor: `${c.accent}66` }]}>
-          <View style={styles.codeLeft}>
-            <Ionicons name="key" size={17} color={c.accentStrong} />
-            <Text style={[styles.codeText, { color: c.textPrimary }]}>{group.invite_code}</Text>
+          {/* Invite code */}
+          <View style={[styles.codeCard, { backgroundColor: c.surface, borderColor: `${c.accent}66` }]}>
+            <View style={styles.codeLeft}>
+              <Ionicons name="key" size={17} color={c.accentStrong} />
+              <Text style={[styles.codeText, { color: c.textPrimary }]}>{group.invite_code}</Text>
+            </View>
+            <TouchableOpacity onPress={shareCode} style={styles.codeShare} hitSlop={8}>
+              <Ionicons name="share-social" size={15} color={c.accentStrong} />
+              <Text style={[styles.codeShareText, { color: c.accentStrong }]}>Compartir</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={shareCode} style={styles.codeShare} hitSlop={8}>
-            <Ionicons name="share-social" size={15} color={c.accentStrong} />
-            <Text style={[styles.codeShareText, { color: c.accentStrong }]}>Compartir</Text>
-          </TouchableOpacity>
-        </View>
 
-        {/* Lista de miembros, particionada por presencia en vivo */}
-        {(() => {
-          const studyingMembers = members.filter((m) => presence[m.user_id]?.is_studying);
-          const onlineNotStudyingMembers = members.filter(
-            (m) => presence[m.user_id] && !presence[m.user_id]?.is_studying
-          );
-          const offlineMembers = members.filter((m) => !presence[m.user_id]);
+          {/* Lista de miembros, particionada por presencia en vivo */}
+          {(() => {
+            const studyingMembers = members.filter((m) => presence[m.user_id]?.is_studying);
+            const onlineNotStudyingMembers = members.filter(
+              (m) => presence[m.user_id] && !presence[m.user_id]?.is_studying
+            );
+            const offlineMembers = members.filter((m) => !presence[m.user_id]);
 
-          const renderMember = (m: GroupMember, status: 'studying' | 'online' | 'offline') => {
-            const isOwnerRow = m.role === 'owner';
-            const isAdmin = m.role === 'admin';
-            const p = presence[m.user_id];
+            const renderMember = (m: GroupMember, status: 'studying' | 'online' | 'offline') => {
+              const isOwnerRow = m.role === 'owner';
+              const isAdmin = m.role === 'admin';
+              const p = presence[m.user_id];
 
-            // Línea 2: subLine según el estado
-            let subLine: string;
-            if (status === 'studying') {
-              subLine = p?.subject_name?.trim() || 'Estudiando';
-            } else if (status === 'online') {
-              subLine = m.category?.trim() ? `En línea • ${m.category.trim()}` : 'En línea';
-            } else {
-              subLine = m.category?.trim() || 'Desconectado';
-            }
-
-            // Timer en verde: si está estudiando y soy yo, uso el del store; si no, lo derivo de started_at.
-            let timerText: string | null = null;
-            if (status === 'studying') {
-              if (m.user_id === user?.id) {
-                timerText = formatHMS(useAppStore.getState().timerSeconds);
-              } else if (p?.started_at) {
-                const elapsed = Math.max(
-                  0,
-                  Math.floor((Date.now() - new Date(p.started_at).getTime()) / 1000)
-                );
-                timerText = formatHMS(elapsed);
+              // Línea 2: subLine según el estado
+              let subLine: string;
+              if (status === 'studying') {
+                subLine = p?.subject_name?.trim() || 'Estudiando';
+              } else if (status === 'online') {
+                subLine = m.category?.trim() ? `En línea • ${m.category.trim()}` : 'En línea';
+              } else {
+                subLine = m.category?.trim() || 'Desconectado';
               }
-            }
 
-            // Opacidad y si lleva aro verde
-            const cardOpacity = status === 'offline' ? 0.5 : 1.0;
-            const studying = status === 'studying';
+              // Timer en verde: si está estudiando y soy yo, uso el del store; si no, lo derivo de started_at.
+              let timerText: string | null = null;
+              if (status === 'studying') {
+                if (m.user_id === user?.id) {
+                  timerText = formatHMS(useAppStore.getState().timerSeconds);
+                } else if (p?.started_at) {
+                  const elapsed = Math.max(
+                    0,
+                    Math.floor((Date.now() - new Date(p.started_at).getTime()) / 1000)
+                  );
+                  timerText = formatHMS(elapsed);
+                }
+              }
+
+              // Opacidad y si lleva aro verde
+              const cardOpacity = status === 'offline' ? 0.5 : 1.0;
+              const studying = status === 'studying';
+
+              return (
+                <View
+                  key={m.id}
+                  style={[
+                    styles.memberCard,
+                    styles.cardShadow,
+                    { backgroundColor: c.surface, opacity: cardOpacity },
+                  ]}
+                >
+                  <MemberAvatar
+                    userId={m.user_id}
+                    nickname={m.nickname ?? m.name}
+                    avatarUrl={m.avatar_url}
+                    ring={studying}
+                    size={44}
+                  />
+                  <View style={styles.memberInfo}>
+                    <View style={styles.nameRow}>
+                      <Text style={[styles.memberName, { color: c.textPrimary }]} numberOfLines={1}>
+                        {displayName(m)}
+                      </Text>
+                      {(isOwnerRow || isAdmin) && (
+                        <View style={[styles.miniBadge, { borderColor: `${c.accent}99` }]}>
+                          <Text style={[styles.miniBadgeText, { color: c.accentStrong }]}>
+                            {isOwnerRow ? 'OWNER' : 'ADMIN'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.memberSub, { color: c.textSecondary }]} numberOfLines={1}>
+                      {subLine}
+                    </Text>
+                  </View>
+                  {timerText && (
+                    <Text style={styles.timer} numberOfLines={1}>
+                      {timerText}
+                    </Text>
+                  )}
+                </View>
+              );
+            };
 
             return (
-              <View
-                key={m.id}
-                style={[
-                  styles.memberCard,
-                  styles.cardShadow,
-                  { backgroundColor: c.surface, opacity: cardOpacity },
-                ]}
-              >
-                <MemberAvatar
-                  userId={m.user_id}
-                  nickname={m.nickname ?? m.name}
-                  avatarUrl={m.avatar_url}
-                  ring={studying}
-                  size={44}
-                />
-                <View style={styles.memberInfo}>
-                  <View style={styles.nameRow}>
-                    <Text style={[styles.memberName, { color: c.textPrimary }]} numberOfLines={1}>
-                      {displayName(m)}
-                    </Text>
-                    {(isOwnerRow || isAdmin) && (
-                      <View style={[styles.miniBadge, { borderColor: `${c.accent}99` }]}>
-                        <Text style={[styles.miniBadgeText, { color: c.accentStrong }]}>
-                          {isOwnerRow ? 'OWNER' : 'ADMIN'}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[styles.memberSub, { color: c.textSecondary }]} numberOfLines={1}>
-                    {subLine}
+              <>
+                {/* Banner de "en vivo" */}
+                <View style={[styles.liveBanner, { backgroundColor: '#D1FAE5' }]}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>
+                    {studyingMembers.length} estudiando ahora · actualización en tiempo real
                   </Text>
                 </View>
-                {timerText && (
-                  <Text style={styles.timer} numberOfLines={1}>
-                    {timerText}
-                  </Text>
+
+                {studyingMembers.length > 0 && (
+                  <>
+                    <Text style={[styles.section, { color: c.textSecondary }]}>ESTUDIANDO AHORA</Text>
+                    <View style={{ gap: 10 }}>
+                      {studyingMembers.map((m) => renderMember(m, 'studying'))}
+                    </View>
+                  </>
                 )}
-              </View>
+
+                {onlineNotStudyingMembers.length > 0 && (
+                  <>
+                    <Text style={[styles.section, { color: c.textSecondary }]}>CONECTADOS</Text>
+                    <View style={{ gap: 10 }}>
+                      {onlineNotStudyingMembers.map((m) => renderMember(m, 'online'))}
+                    </View>
+                  </>
+                )}
+
+                {offlineMembers.length > 0 && (
+                  <>
+                    <Text style={[styles.section, { color: c.textSecondary }]}>DESCONECTADOS</Text>
+                    <View style={{ gap: 10 }}>
+                      {offlineMembers.map((m) => renderMember(m, 'offline'))}
+                    </View>
+                  </>
+                )}
+              </>
             );
-          };
+          })()}
 
-          return (
-            <>
-              {/* Banner de "en vivo" */}
-              <View style={[styles.liveBanner, { backgroundColor: '#D1FAE5' }]}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>
-                  {studyingMembers.length} estudiando ahora · actualización en tiempo real
-                </Text>
-              </View>
+          {/* Section: del grupo */}
+          <Text style={[styles.section, { color: c.textSecondary }]}>DEL GRUPO</Text>
 
-              {studyingMembers.length > 0 && (
-                <>
-                  <Text style={[styles.section, { color: c.textSecondary }]}>ESTUDIANDO AHORA</Text>
-                  <View style={{ gap: 10 }}>
-                    {studyingMembers.map((m) => renderMember(m, 'studying'))}
-                  </View>
-                </>
-              )}
-
-              {onlineNotStudyingMembers.length > 0 && (
-                <>
-                  <Text style={[styles.section, { color: c.textSecondary }]}>CONECTADOS</Text>
-                  <View style={{ gap: 10 }}>
-                    {onlineNotStudyingMembers.map((m) => renderMember(m, 'online'))}
-                  </View>
-                </>
-              )}
-
-              {offlineMembers.length > 0 && (
-                <>
-                  <Text style={[styles.section, { color: c.textSecondary }]}>DESCONECTADOS</Text>
-                  <View style={{ gap: 10 }}>
-                    {offlineMembers.map((m) => renderMember(m, 'offline'))}
-                  </View>
-                </>
-              )}
-            </>
-          );
-        })()}
-
-        {/* Section: del grupo */}
-        <Text style={[styles.section, { color: c.textSecondary }]}>DEL GRUPO</Text>
-
-        <View style={{ gap: 10 }}>
-          <NavRow
-            colors={c}
-            icon="list"
-            label="Actividades"
-            onPress={() => Alert.alert('Próximamente', 'Listado de actividades del grupo.')}
-          />
-          <NavRow
-            colors={c}
-            icon="stats-chart"
-            label="Estadísticas del grupo"
-            onPress={() => router.push(`/group/${group.id}/stats`)}
-          />
-          {(isOwner || myRole === 'admin') && (
+          <View style={{ gap: 10 }}>
+            {/* RUTAS ARREGLADAS (Usando comillas invertidas) */}
             <NavRow
               colors={c}
-              icon="people"
-              label="Gestionar miembros"
-              onPress={() => router.push(`/group/${group.id}/manage`)}
+              icon="list"
+              label="Actividades"
+              onPress={() => router.push(`/group/${group.id}/activities`)}
             />
-          )}
-          <NavRow
-            colors={c}
-            icon="information-circle"
-            label="Info del grupo"
-            onPress={() => router.push(`/group/${group.id}/info`)}
-          />
-        </View>
-      </ScrollView>
-
-      {/* Bottom sheet de opciones (kebab ⋮) — mismo patrón visual que TaskCard */}
-      <Modal
-        transparent
-        visible={optionsVisible}
-        animationType="slide"
-        onRequestClose={() => !actionLoading && setOptionsVisible(false)}
-      >
-        <TouchableOpacity
-          style={[styles.sheetOverlay, { backgroundColor: c.modalOverlay }]}
-          activeOpacity={1}
-          onPress={() => !actionLoading && setOptionsVisible(false)}
-        >
-          <View style={[styles.sheet, { backgroundColor: c.modalBg }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: c.handle }]} />
-
-            <View style={styles.sheetHeader}>
-              <View style={[styles.sheetDot, { backgroundColor: c.accentStrong }]} />
-              <View>
-                <Text style={[styles.sheetTitle, { color: c.textPrimary }]} numberOfLines={1}>
-                  {group?.name}
-                </Text>
-                <Text style={[styles.sheetSub, { color: c.textSecondary }]}>¿Qué deseas hacer?</Text>
-              </View>
-            </View>
-
-            <SheetBtn
+            <NavRow
               colors={c}
-              icon="share-social"
-              label="Compartir código"
-              onPress={() => {
-                setOptionsVisible(false);
-                shareCode();
-              }}
+              icon="stats-chart"
+              label="Estadísticas del grupo"
+              onPress={() => router.push(`/group/${group.id}/stats`)}
             />
+            {(isOwner || myRole === 'admin') && (
+              <NavRow
+                colors={c}
+                icon="people"
+                label="Gestionar miembros"
+                onPress={() => router.push(`/group/${group.id}/manage`)}
+              />
+            )}
+            <NavRow
+              colors={c}
+              icon="information-circle"
+              label="Info del grupo"
+              onPress={() => router.push(`/group/${group.id}/info`)}
+            />
+          </View>
+        </ScrollView>
 
-            {isOwner && (
+        {/* Bottom sheet de opciones (kebab ⋮) */}
+        <Modal
+          transparent
+          visible={optionsVisible}
+          animationType="slide"
+          onRequestClose={() => !actionLoading && setOptionsVisible(false)}
+        >
+          <TouchableOpacity
+            style={[styles.sheetOverlay, { backgroundColor: c.modalOverlay }]}
+            activeOpacity={1}
+            onPress={() => !actionLoading && setOptionsVisible(false)}
+          >
+            <View style={[styles.sheet, { backgroundColor: c.modalBg }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: c.handle }]} />
+
+              <View style={styles.sheetHeader}>
+                <View style={[styles.sheetDot, { backgroundColor: c.accentStrong }]} />
+                <View>
+                  <Text style={[styles.sheetTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                    {group?.name}
+                  </Text>
+                  <Text style={[styles.sheetSub, { color: c.textSecondary }]}>¿Qué deseas hacer?</Text>
+                </View>
+              </View>
+
               <SheetBtn
                 colors={c}
-                icon="pencil"
-                label="Editar grupo"
-                trailing="Owner"
+                icon="share-social"
+                label="Compartir código"
                 onPress={() => {
                   setOptionsVisible(false);
-                  // pequeño delay para que las animaciones de los dos sheets no se peleen
-                  setTimeout(() => setEditNameVisible(true), 250);
+                  shareCode();
                 }}
               />
-            )}
 
-            {/* El owner no puede "salir": si quiere irse, tiene que eliminar el grupo */}
-            {!isOwner && (
-              <SheetBtn
-                colors={c}
-                icon="log-out-outline"
-                label="Salir del grupo"
-                onPress={confirmLeave}
-              />
-            )}
+              {isOwner && (
+                <SheetBtn
+                  colors={c}
+                  icon="pencil"
+                  label="Editar grupo"
+                  trailing="Owner"
+                  onPress={() => {
+                    setOptionsVisible(false);
+                    // pequeño delay para que las animaciones de los dos sheets no se peleen
+                    setTimeout(() => setEditNameVisible(true), 250);
+                  }}
+                />
+              )}
 
-            {isOwner && (
-              <SheetBtn
-                colors={c}
-                icon="trash-outline"
-                label="Eliminar grupo"
-                danger
-                onPress={confirmDelete}
-              />
-            )}
+              {!isOwner && (
+                <SheetBtn
+                  colors={c}
+                  icon="log-out-outline"
+                  label="Salir del grupo"
+                  onPress={confirmLeave}
+                />
+              )}
 
-            <TouchableOpacity
-              style={styles.sheetCancel}
-              onPress={() => !actionLoading && setOptionsVisible(false)}
-              disabled={actionLoading}
-            >
-              <Text style={[styles.sheetCancelText, { color: c.textSecondary }]}>Cancelar</Text>
-            </TouchableOpacity>
+              {isOwner && (
+                <SheetBtn
+                  colors={c}
+                  icon="trash-outline"
+                  label="Eliminar grupo"
+                  danger
+                  onPress={confirmDelete}
+                />
+              )}
 
-            {actionLoading && (
-              <View style={styles.sheetSpinner} pointerEvents="none">
-                <ActivityIndicator color={c.accentStrong} />
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+              <TouchableOpacity
+                style={styles.sheetCancel}
+                onPress={() => !actionLoading && setOptionsVisible(false)}
+                disabled={actionLoading}
+              >
+                <Text style={[styles.sheetCancelText, { color: c.textSecondary }]}>Cancelar</Text>
+              </TouchableOpacity>
 
-      <ConfirmModal
-        visible={pendingConfirm === 'leave'}
-        title="Salir del grupo"
-        description={`Vas a dejar "${group?.name}". Si querés volver vas a tener que pedir el código de invitación de nuevo.`}
-        icon="log-out-outline"
-        confirmLabel="Salir"
-        destructive
-        onConfirm={runPendingConfirm}
-        onCancel={() => !actionLoading && setPendingConfirm(null)}
-      />
+              {actionLoading && (
+                <View style={styles.sheetSpinner} pointerEvents="none">
+                  <ActivityIndicator color={c.accentStrong} />
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
-      <ConfirmModal
-        visible={pendingConfirm === 'delete'}
-        title="Eliminar grupo"
-        description={`"${group?.name}" se elimina para todos los miembros. También se borran las actividades del grupo. Esta acción no se puede deshacer.`}
-        icon="trash-outline"
-        confirmLabel="Eliminar grupo"
-        destructive
-        onConfirm={runPendingConfirm}
-        onCancel={() => !actionLoading && setPendingConfirm(null)}
-      />
+        <ConfirmModal
+          visible={pendingConfirm === 'leave'}
+          title="Salir del grupo"
+          description={`Vas a dejar "${group?.name}". Si querés volver vas a tener que pedir el código de invitación de nuevo.`}
+          icon="log-out-outline"
+          confirmLabel="Salir"
+          destructive
+          onConfirm={runPendingConfirm}
+          onCancel={() => !actionLoading && setPendingConfirm(null)}
+        />
 
-      <EditNameSheet
-        visible={editNameVisible}
-        title="Editar grupo"
-        description="Cambiá el nombre del grupo. Lo van a ver todos los miembros."
-        icon="pencil"
-        initialValue={group?.name ?? ''}
-        placeholder="Ej: Compas de facultad"
-        minLength={3}
-        maxLength={50}
-        onClose={() => setEditNameVisible(false)}
-        onSave={async (newName) => {
-          if (!group) return;
-          await updateGroupName(group.id, newName);
-          await load();
-        }}
-      />
-    </SafeAreaView>
+        <ConfirmModal
+          visible={pendingConfirm === 'delete'}
+          title="Eliminar grupo"
+          description={`"${group?.name}" se elimina para todos los miembros. También se borran las actividades del grupo. Esta acción no se puede deshacer.`}
+          icon="trash-outline"
+          confirmLabel="Eliminar grupo"
+          destructive
+          onConfirm={runPendingConfirm}
+          onCancel={() => !actionLoading && setPendingConfirm(null)}
+        />
+
+        <EditNameSheet
+          visible={editNameVisible}
+          title="Editar grupo"
+          description="Cambiá el nombre del grupo. Lo van a ver todos los miembros."
+          icon="pencil"
+          initialValue={group?.name ?? ''}
+          placeholder="Ej: Compas de facultad"
+          minLength={3}
+          maxLength={50}
+          onClose={() => setEditNameVisible(false)}
+          onSave={async (newName) => {
+            if (!group) return;
+            await updateGroupName(group.id, newName);
+            await load();
+          }}
+        />
+      </SafeAreaView>
+    </>
   );
 }
 
