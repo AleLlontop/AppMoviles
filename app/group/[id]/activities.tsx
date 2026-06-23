@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Switch, Platform, Alert } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, ActivityIndicator, FlatList, Switch, Platform, Alert, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,9 +29,27 @@ export default function ActivitiesScreen() {
   const [type, setType] = useState('task');
   const [notifyAll, setNotifyAll] = useState(false);
 
+  // ESTADO PARA LA ALTURA DEL TECLADO
+  const [kbHeight, setKbHeight] = useState(0);
+
   // ESTADOS DEL MODAL DE ELIMINAR
   const [actToDelete, setActToDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // EFECTO PARA ESCUCHAR EL TECLADO
+  useEffect(() => {
+    if (!modalVisible) return;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const show = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [modalVisible]);
 
   useFocusEffect(
     useCallback(() => {
@@ -56,14 +74,19 @@ export default function ActivitiesScreen() {
   };
 
   const handleCreateActivity = async () => {
-    if (!title.trim() || !duration.trim()) return Alert.alert('Error', 'Título y duración son obligatorios.');
+    // Si es un timer, permitimos que pase sin duración (o le asignamos 0 internamente si querés)
+    if (!title.trim() || (type !== 'timer' && !duration.trim())) {
+      return Alert.alert('Error', 'El título y la duración son obligatorios.');
+    }
 
     setCreating(true);
     try {
+      const durationValue = type === 'timer' ? 0 : parseInt(duration);
+
       const { error } = await supabase.from('group_activities').insert([{
         group_id: group_id,
         title: title.trim(),
-        duration_min: parseInt(duration),
+        duration_min: durationValue,
         type: type,
         notify_all: notifyAll,
         created_by: user!.id
@@ -134,7 +157,9 @@ export default function ActivitiesScreen() {
               >
                 <View className="flex-1 pr-2">
                   <Text style={{ color: c.textPrimary }} className="text-lg font-bold mb-1">{item.title}</Text>
-                  <Text style={{ color: c.textSecondary, fontSize: 12 }}>{item.duration_min} min • Tipo: {item.type}</Text>
+                  <Text style={{ color: c.textSecondary, fontSize: 12 }}>
+                    {item.type === 'timer' ? 'Tipo: Cronómetro' : `${item.duration_min} min • Tipo: ${item.type}`}
+                  </Text>
                 </View>
                 {isAdmin && (
                   <TouchableOpacity onPress={(e) => { e.stopPropagation(); setActToDelete(item.id); }}>
@@ -152,27 +177,42 @@ export default function ActivitiesScreen() {
           </TouchableOpacity>
         )}
 
-        {/* MODAL PARA CREAR LA ACTIVIDAD */}
+        {/* MODAL PARA CREAR LA ACTIVIDAD (CON PADDING DINÁMICO) */}
         <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
           <View style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: c.surface, padding: 24, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24 }}>
+            <View style={{
+              backgroundColor: c.surface,
+              padding: 24,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingBottom: Platform.OS === 'ios' ? (kbHeight > 0 ? kbHeight + 20 : 40) : (kbHeight > 0 ? kbHeight : 24)
+            }}>
               <Text style={{ color: c.textPrimary, fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>Nueva Actividad</Text>
+
               <Text style={{ color: c.textSecondary, marginBottom: 4 }}>Título</Text>
               <TextInput style={{ backgroundColor: c.background, color: c.textPrimary, padding: 14, borderRadius: 10, marginBottom: 12 }} value={title} onChangeText={setTitle} placeholder="Ej: Repaso General" placeholderTextColor={c.textSecondary} />
-              <Text style={{ color: c.textSecondary, marginBottom: 4 }}>Duración (minutos)</Text>
-              <TextInput style={{ backgroundColor: c.background, color: c.textPrimary, padding: 14, borderRadius: 10, marginBottom: 12 }} value={duration} onChangeText={setDuration} keyboardType="numeric" placeholder="Ej: 30" placeholderTextColor={c.textSecondary} />
+
               <Text style={{ color: c.textSecondary, marginBottom: 4 }}>Tipo</Text>
               <View className="flex-row gap-2 mb-4">
-                {['task', 'form'].map(t => (
+                {['task', 'form', 'timer'].map(t => (
                   <TouchableOpacity key={t} onPress={() => setType(t)} style={{ flex: 1, padding: 10, borderRadius: 8, backgroundColor: type === t ? `${c.accent}30` : c.background, borderWidth: 1, borderColor: type === t ? c.accentStrong : 'transparent' }}>
                     <Text style={{ textAlign: 'center', color: type === t ? c.accentStrong : c.textPrimary, fontWeight: 'bold' }}>{t}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {type !== 'timer' && (
+                <>
+                  <Text style={{ color: c.textSecondary, marginBottom: 4 }}>Duración (minutos)</Text>
+                  <TextInput style={{ backgroundColor: c.background, color: c.textPrimary, padding: 14, borderRadius: 10, marginBottom: 12 }} value={duration} onChangeText={setDuration} keyboardType="numeric" placeholder="Ej: 30" placeholderTextColor={c.textSecondary} />
+                </>
+              )}
+
               <View className="flex-row items-center justify-between mb-6">
                 <Text style={{ color: c.textPrimary }}>Notificar a todos</Text>
                 <Switch value={notifyAll} onValueChange={setNotifyAll} />
               </View>
+
               <TouchableOpacity style={{ backgroundColor: c.accent, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleCreateActivity} disabled={creating}>
                 {creating ? <ActivityIndicator color={c.textPrimary} /> : <Text style={{ color: c.textPrimary, fontWeight: 'bold' }}>Guardar</Text>}
               </TouchableOpacity>
