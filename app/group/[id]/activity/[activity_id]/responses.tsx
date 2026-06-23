@@ -149,7 +149,7 @@ export default function ActivityResponsesScreen() {
           <View className="flex-1 items-center justify-center px-8">
             <Ionicons name="document-text-outline" size={48} color={c.textSecondary} className="mb-4" />
             <Text style={{ color: c.textPrimary }} className="text-xl font-bold mb-2">Sin Entregas</Text>
-            <Text style={{ color: c.textSecondary }} className="text-center">Todavía ningún alumno completó esta actividad.</Text>
+            <Text style={{ color: c.textSecondary }} className="text-center">Todavía ningún miembro completó esta actividad.</Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}>
