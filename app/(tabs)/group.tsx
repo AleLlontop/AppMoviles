@@ -1,9 +1,10 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Modal, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  Modal, TextInput, ActivityIndicator, Alert, Keyboard, Platform, Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useThemeColors } from '@/hooks/use-theme-colors';
@@ -50,13 +51,28 @@ export default function GroupScreen() {
     already_member: 'Ya sos miembro de este grupo',
   };
 
+  const fillCode = (raw: string) => {
+    const cleaned = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    const next = Array.from({ length: 6 }, (_, i) => cleaned[i] ?? '');
+    setCode(next);
+    setJoinError(null);
+    const lastIdx = Math.min(cleaned.length - 1, 5);
+    if (lastIdx >= 0) inputRefs.current[lastIdx]?.focus();
+  };
+
   const handleCodeChange = (text: string, index: number) => {
-    const char = text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(-1);
+    if (text.length > 1) { fillCode(text); return; }
+    const char = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const next = [...code];
     next[index] = char;
     setCode(next);
     setJoinError(null);
     if (char && index < 5) inputRefs.current[index + 1]?.focus();
+  };
+
+  const handlePasteCode = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) fillCode(text);
   };
 
   const handleCodeKeyPress = (key: string, index: number) => {
@@ -127,6 +143,16 @@ export default function GroupScreen() {
     setShowCreateModal(false);
     setGroupName('');
   };
+
+  const insets = useSafeAreaInsets();
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const isLoadingList = myGroups === null;
   const hasGroups = !!myGroups && myGroups.length > 0;
@@ -245,34 +271,28 @@ export default function GroupScreen() {
       )}
 
       {/* Modal Crear grupo */}
-      <Modal
-        visible={showCreateModal}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseModal}
-      >
-        <View style={styles.modalOuter}>
-          {/* Backdrop separado del KAV para que no se encoja con el teclado */}
-          <TouchableOpacity
-            style={[styles.modalBackdrop, { backgroundColor: c.modalOverlay }]}
-            activeOpacity={1}
-            onPress={handleCloseModal}
-          />
-          <KeyboardAvoidingView
-            style={styles.modalKAV}
-            behavior="padding"
+      <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={handleCloseModal}>
+        <Pressable style={[styles.modalBackdrop, { backgroundColor: c.modalOverlay }]} onPress={handleCloseModal}>
+          <Pressable
+            style={[styles.modalSheet, { backgroundColor: c.modalBg, paddingBottom: Math.max(kbHeight, insets.bottom) + 16 }]}
+            onPress={e => e.stopPropagation()}
           >
-          <View style={[styles.modalSheet, { backgroundColor: c.modalBg }]}>
-            {/* Handle */}
             <View style={[styles.handle, { backgroundColor: c.handle }]} />
 
-            <Text style={[styles.modalTitle, { color: c.textPrimary }]}>Crear grupo</Text>
+            <View style={styles.modalIconRow}>
+              <View style={[styles.modalIcon, { backgroundColor: `${c.accent}20` }]}>
+                <Ionicons name="people" size={26} color={c.accentStrong} />
+              </View>
+            </View>
 
-            {/* Nombre del grupo */}
-            <Text style={[styles.label, { color: c.textSecondary }]}>Nombre del grupo</Text>
+            <Text style={[styles.modalTitle, { color: c.textPrimary }]}>Nuevo grupo</Text>
+            <Text style={[styles.modalSubtitle, { color: c.textSecondary }]}>
+              Elegí un nombre para que tus compañeros lo reconozcan
+            </Text>
+
             <TextInput
               style={[styles.input, { backgroundColor: c.separator, color: c.textPrimary, borderColor: c.border }]}
-              placeholder="Ej: Grupo de estudio "
+              placeholder="Ej: Compas de Análisis II"
               placeholderTextColor={c.textSecondary}
               value={groupName}
               onChangeText={setGroupName}
@@ -282,63 +302,43 @@ export default function GroupScreen() {
               onSubmitEditing={handleCreate}
             />
 
-            {/* Capacidad máxima */}
-            <Text style={[styles.label, { color: c.textSecondary }]}>Capacidad máxima</Text>
-            <View style={[styles.inputStatic, { backgroundColor: c.separator, borderColor: c.border }]}>
-              <Text style={{ color: c.textPrimary, fontSize: 15 }}>10 miembros (máximo)</Text>
-            </View>
-
-            {/* Botón Crear */}
             <TouchableOpacity
-              style={[styles.buttonPrimary, { backgroundColor: loading ? c.accentStrong : c.accentStrong, opacity: loading ? 0.7 : 1, marginTop: 8 }]}
+              style={[styles.buttonPrimary, { backgroundColor: c.accentStrong, opacity: loading ? 0.7 : 1 }]}
               activeOpacity={0.85}
               onPress={handleCreate}
               disabled={loading}
             >
-              {loading
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.buttonPrimaryText}>Crear</Text>
-              }
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonPrimaryText}>Crear grupo</Text>}
             </TouchableOpacity>
 
-            {/* Cancelar */}
             <TouchableOpacity onPress={handleCloseModal} disabled={loading}>
-              <Text style={[styles.cancelText, { color: loading ? c.border : c.textSecondary }]}>
-                Cancelar
-              </Text>
+              <Text style={[styles.cancelText, { color: loading ? c.border : c.textSecondary }]}>Cancelar</Text>
             </TouchableOpacity>
-          </View>
-          </KeyboardAvoidingView>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Modal Unirse con código */}
-      <Modal
-        visible={showJoinModal}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseJoinModal}
-      >
-        <View style={styles.modalOuter}>
-          <TouchableOpacity
-            style={[styles.modalBackdrop, { backgroundColor: c.modalOverlay }]}
-            activeOpacity={1}
-            onPress={handleCloseJoinModal}
-          />
-          <KeyboardAvoidingView
-            style={styles.modalKAV}
-            behavior="padding"
+      <Modal visible={showJoinModal} transparent animationType="slide" onRequestClose={handleCloseJoinModal}>
+        <Pressable style={[styles.modalBackdrop, { backgroundColor: c.modalOverlay }]} onPress={handleCloseJoinModal}>
+          <Pressable
+            style={[styles.modalSheet, { backgroundColor: c.modalBg, paddingBottom: Math.max(kbHeight, insets.bottom) + 16 }]}
+            onPress={e => e.stopPropagation()}
           >
-
-          <View style={[styles.modalSheet, { backgroundColor: c.modalBg }]}>
             <View style={[styles.handle, { backgroundColor: c.handle }]} />
 
-            <Text style={[styles.modalTitle, { color: c.textPrimary }]}>Unirse a un grupo</Text>
-            <Text style={[styles.joinSubtitle, { color: c.textSecondary }]}>
-              Ingresá el código que te compartió{'\n'}el dueño del grupo
+            <View style={styles.modalIconRow}>
+              <View style={[styles.modalIcon, { backgroundColor: `${c.accent}20` }]}>
+                <Ionicons name="key" size={26} color={c.accentStrong} />
+              </View>
+            </View>
+
+            <Text style={[styles.modalTitle, { color: c.textPrimary }]}>Código de invitación</Text>
+            <Text style={[styles.modalSubtitle, { color: c.textSecondary }]}>
+              Pedíselo a alguien que ya esté en el grupo
             </Text>
 
-            {/* Input OTP 6 celdas */}
+            {/* OTP cells */}
             <View style={styles.otpRow}>
               {code.map((char, i) => (
                 <TextInput
@@ -347,7 +347,7 @@ export default function GroupScreen() {
                   style={[
                     styles.otpCell,
                     {
-                      backgroundColor: c.separator,
+                      backgroundColor: char ? `${c.accent}15` : c.separator,
                       color: c.accentStrong,
                       borderColor: joinError ? '#EF4444' : char ? c.accentStrong : c.border,
                     },
@@ -365,37 +365,34 @@ export default function GroupScreen() {
               ))}
             </View>
 
+            {/* Pegar */}
+            <TouchableOpacity onPress={handlePasteCode} style={styles.pasteLink}>
+              <Ionicons name="clipboard-outline" size={14} color={c.textSecondary} />
+              <Text style={[styles.pasteLinkText, { color: c.textSecondary }]}>Pegar desde portapapeles</Text>
+            </TouchableOpacity>
+
             {/* Error */}
             {joinError && (
               <View style={styles.errorBox}>
                 <Ionicons name="warning" size={14} color="#EF4444" />
-                <Text style={styles.errorText}>
-                  {joinErrorMessages[joinError] ?? 'Error desconocido'}
-                </Text>
+                <Text style={styles.errorText}>{joinErrorMessages[joinError] ?? 'Error desconocido'}</Text>
               </View>
             )}
 
-            {/* Botón Unirse */}
             <TouchableOpacity
-              style={[styles.buttonPrimary, { backgroundColor: c.accentStrong, opacity: joining ? 0.7 : 1, marginTop: 4 }]}
+              style={[styles.buttonPrimary, { backgroundColor: c.accentStrong, opacity: joining ? 0.7 : 1 }]}
               activeOpacity={0.85}
               onPress={handleJoin}
               disabled={joining}
             >
-              {joining
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.buttonPrimaryText}>Unirse</Text>
-              }
+              {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonPrimaryText}>Unirse</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={handleCloseJoinModal} disabled={joining}>
-              <Text style={[styles.cancelText, { color: joining ? c.border : c.textSecondary }]}>
-                Cancelar
-              </Text>
+              <Text style={[styles.cancelText, { color: joining ? c.border : c.textSecondary }]}>Cancelar</Text>
             </TouchableOpacity>
-          </View>
-          </KeyboardAvoidingView>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
     </SafeAreaView>
@@ -515,63 +512,50 @@ const styles = StyleSheet.create({
   buttonSecondaryText: { fontSize: 16, fontWeight: '600' },
 
   // Modal
-  modalOuter: { ...StyleSheet.absoluteFillObject },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    elevation: 20,
-    zIndex: 20,
-  },
-  modalKAV: {
     flex: 1,
     justifyContent: 'flex-end',
-    elevation: 21,
-    zIndex: 21,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingHorizontal: 24,
-    paddingBottom: 40,
     paddingTop: 12,
-    gap: 12,
+    gap: 14,
   },
   handle: {
     width: 40,
     height: 4,
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  modalIconRow: { alignItems: 'center', marginBottom: -4 },
+  modalIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#fff',
     textAlign: 'center',
-    marginBottom: 8,
   },
-  label: { fontSize: 13, fontWeight: '500', marginBottom: -4 },
+  modalSubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: -6,
+  },
   input: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    fontSize: 15,
-  },
-  inputStatic: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  infoBox: {
-    backgroundColor: 'rgba(34,197,94,0.1)',
-    borderRadius: 10,
-    padding: 12,
-  },
-  infoText: {
-    color: '#4ADE80',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 16,
   },
   cancelText: {
     textAlign: 'center',
@@ -581,26 +565,28 @@ const styles = StyleSheet.create({
   },
 
   // Join modal
-  joinSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 4,
-  },
   otpRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    marginVertical: 4,
   },
   otpCell: {
-    width: 44,
-    height: 54,
-    borderRadius: 10,
+    width: 46,
+    height: 58,
+    borderRadius: 12,
     borderWidth: 1.5,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
   },
+  pasteLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  pasteLinkText: { fontSize: 13 },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -614,18 +600,5 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 13,
     flex: 1,
-  },
-  hintsBox: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 2,
-  },
-  hintsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  hintsText: {
-    fontSize: 12,
   },
 });

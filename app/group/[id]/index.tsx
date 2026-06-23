@@ -415,7 +415,7 @@ export default function GroupDetailScreen() {
             colors={c}
             icon="information-circle"
             label="Info del grupo"
-            onPress={() => Alert.alert('Próximamente', 'Detalles del grupo.')}
+            onPress={() => router.push(`/group/${group.id}/info`)}
           />
         </View>
       </ScrollView>

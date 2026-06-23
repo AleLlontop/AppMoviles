@@ -3,6 +3,7 @@ import { supabase } from '@/utils/supabase';
 export type Group = {
   id: string;
   name: string;
+  description: string | null;
   invite_code: string;
   created_by: string;
   created_at: string;
@@ -127,11 +128,19 @@ export const getMyGroups = async (userId: string): Promise<MyGroup[]> => {
 export const getGroup = async (groupId: string): Promise<Group | null> => {
   const { data, error } = await supabase
     .from('groups')
-    .select('id, name, invite_code, created_by, created_at, max_members')
+    .select('id, name, description, invite_code, created_by, created_at, max_members')
     .eq('id', groupId)
     .maybeSingle();
   if (error) throw error;
   return data;
+};
+
+export const updateGroupDescription = async (groupId: string, description: string): Promise<void> => {
+  const { error } = await supabase.rpc('update_group_description', {
+    p_group_id: groupId,
+    p_description: description.trim() || null,
+  });
+  if (error) throw error;
 };
 
 export const updateGroupName = async (groupId: string, name: string): Promise<void> => {
