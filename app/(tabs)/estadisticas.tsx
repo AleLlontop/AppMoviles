@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import dayjs, { Dayjs } from 'dayjs';
 import 'dayjs/locale/es';
 
@@ -28,6 +30,7 @@ function getDateRange(tab: TabType, ref: Dayjs) {
 
 export default function EstadisticasScreen() {
   const c = useThemeColors();
+  const router = useRouter();
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
   const [statsData, setStatsData]       = useState<any>(null);
@@ -138,6 +141,21 @@ export default function EstadisticasScreen() {
           </Text>
         </View>
 
+        {/* Racha banner */}
+        <TouchableOpacity
+          onPress={() => router.push('/rachas')}
+          style={[styles.streakBanner, { backgroundColor: c.surface }]}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="flame" size={20} color="#FF6B35" />
+            <Text style={[styles.streakBannerText, { color: c.textPrimary }]}>
+              Mi racha de estudio
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />
+        </TouchableOpacity>
+
         {/* Tabs Day / Week / Month */}
         <View style={[styles.tabNav, { backgroundColor: c.surface }]}>
           {(['Day', 'Week', 'Month'] as TabType[]).map((tab) => (
@@ -182,4 +200,6 @@ const styles = StyleSheet.create({
   tabText:         { fontSize: 14, fontWeight: '500' },
   tabTextActive:   { color: '#FFF' },
   mainContent:     { paddingHorizontal: 16, gap: 16 },
+  streakBanner:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 16, marginBottom: 16, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  streakBannerText: { fontSize: 14, fontWeight: '600' },
 });
