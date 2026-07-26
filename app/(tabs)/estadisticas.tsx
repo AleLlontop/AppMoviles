@@ -144,13 +144,28 @@ export default function EstadisticasScreen() {
         {/* Racha banner */}
         <TouchableOpacity
           onPress={() => router.push('/rachas')}
-          style={[styles.streakBanner, { backgroundColor: c.surface }]}
+          style={[styles.streakBanner, { backgroundColor: c.surface, marginBottom: 17 , marginTop: 15}]}
           activeOpacity={0.7}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Ionicons name="flame" size={20} color="#FF6B35" />
             <Text style={[styles.streakBannerText, { color: c.textPrimary }]}>
               Mi racha de estudio
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />
+        </TouchableOpacity>
+
+        {/* Logros banner */}
+        <TouchableOpacity
+          onPress={() => router.push('/logros')}
+          style={[styles.streakBanner, { backgroundColor: c.surface }]}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 18 }}>🏆</Text>
+            <Text style={[styles.streakBannerText, { color: c.textPrimary }]}>
+              Mis logros
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />

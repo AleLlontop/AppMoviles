@@ -14,6 +14,7 @@ import { useFocusGuard } from '@/hooks/use-focus-guard';
 import { useGlobalPresence } from '@/hooks/use-global-presence';
 import { useDemoPresence } from '@/hooks/use-demo-presence';
 import SessionSummaryModal from '@/components/SessionSummaryModal';
+import AchievementUnlockedModal from '@/components/AchievementUnlockedModal';
 
 // Cuando la app está en primer plano y llega una notificación, no la mostramos
 // (no debería pasar, pero por seguridad)
@@ -30,6 +31,17 @@ Notifications.setNotificationHandler({
 export const unstable_settings = {
   anchor: '(tabs)',
 };
+
+function AchievementUnlockedModalConnected() {
+  const { unlockedAchievements, hideAchievementUnlocked } = useAppStore();
+  return (
+    <AchievementUnlockedModal
+      visible={unlockedAchievements.visible}
+      achievement={unlockedAchievements.achievement}
+      onDismiss={hideAchievementUnlocked}
+    />
+  );
+}
 
 export default function RootLayout() {
   const systemScheme = useColorScheme();
@@ -93,8 +105,10 @@ export default function RootLayout() {
         <Stack.Screen name="group/[id]/manage" options={{ headerShown: false }} />
         <Stack.Screen name="group/[id]/stats" options={{ headerShown: false }} />
         <Stack.Screen name="rachas" options={{ headerShown: false }} />
+        <Stack.Screen name="logros" options={{ headerShown: false }} />
       </Stack>
       <SessionSummaryModal />
+      <AchievementUnlockedModalConnected />
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );

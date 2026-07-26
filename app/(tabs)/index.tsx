@@ -9,6 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/utils/supabase';
 import { useUser } from '@/hooks/use-user';
 import { useAppStore } from '@/store/useAppStore';
+import { checkAchievementConditions } from '@/services/achievementsService';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { isNetworkError } from '@/utils/network';
@@ -123,6 +124,20 @@ export default function HomeScreen() {
       if (insertError) throw insertError;
 
       setOnlineStatus(true);
+
+      // Verificar si se desbloquearon logros
+      if (userId) {
+        try {
+          const newlyUnlocked = await checkAchievementConditions(userId);
+          if (newlyUnlocked.length > 0) {
+            // Mostrar el primer logro desbloqueado
+            const store = useAppStore.getState();
+            store.showAchievementUnlocked(newlyUnlocked[0]);
+          }
+        } catch (error) {
+          console.error('Error checking achievements:', error);
+        }
+      }
     } catch (e) {
       if (isNetworkError(e)) {
         // Encola la sesión para sincronizar cuando vuelva la conexión (RNF-03)

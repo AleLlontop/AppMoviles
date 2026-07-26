@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Achievement } from '@/services/achievementsService';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -91,6 +92,14 @@ interface AppStore {
   demoGroupPresence: Record<string, PresenceMap>;
   setDemoGroupPresence: (groupId: string, map: PresenceMap) => void;
   clearAllDemoPresence: () => void;
+
+  // Logros desbloqueados
+  unlockedAchievements: {
+    visible: boolean;
+    achievement: Achievement | null;
+  };
+  showAchievementUnlocked: (achievement: Achievement) => void;
+  hideAchievementUnlocked: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -168,6 +177,12 @@ export const useAppStore = create<AppStore>()(
       setDemoGroupPresence: (groupId, map) =>
         set((s) => ({ demoGroupPresence: { ...s.demoGroupPresence, [groupId]: map } })),
       clearAllDemoPresence: () => set({ demoGroupPresence: {} }),
+
+      unlockedAchievements: { visible: false, achievement: null },
+      showAchievementUnlocked: (achievement) =>
+        set({ unlockedAchievements: { visible: true, achievement } }),
+      hideAchievementUnlocked: () =>
+        set({ unlockedAchievements: { visible: false, achievement: null } }),
     }),
     {
       name: 'app-store',
