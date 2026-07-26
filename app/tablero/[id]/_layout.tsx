@@ -147,12 +147,13 @@ export default function TableroLayout() {
     <>
       <Stack
         screenOptions={{
+          headerShown: false,
           headerStyle: {
             backgroundColor: c.background,
           },
           headerShadowVisible: false,
           headerLeft: () => (
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => router.back()}
               className="flex-row items-center ml-2"
             >
@@ -160,6 +161,8 @@ export default function TableroLayout() {
             </TouchableOpacity>
           ),
           headerTitle: '',
+          animation: 'none',
+          contentStyle: { backgroundColor: c.background },
         }}
       >
         <Stack.Screen 

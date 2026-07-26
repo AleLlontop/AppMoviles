@@ -48,6 +48,36 @@ export default function TareasScreen() {
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // Modo Examen
+  const [examModalVisible, setExamModalVisible] = useState(false);
+  const EXAM_PRESETS = [5, 10, 15, 30];
+  const EXAM_MIN_MIN = 1;
+  const EXAM_MAX_MIN = 180;
+  const [selectedDuration, setSelectedDuration] = useState<number>(10);
+  const [customDuration, setCustomDuration] = useState<string>('');
+
+  // Resuelve la duración final y su validez (E-01)
+  const resolvedDuration = customDuration.trim()
+    ? parseInt(customDuration, 10)
+    : selectedDuration;
+  const durationIsValid =
+    Number.isFinite(resolvedDuration) &&
+    resolvedDuration >= EXAM_MIN_MIN &&
+    resolvedDuration <= EXAM_MAX_MIN;
+
+  const startExamMode = () => {
+    if (!durationIsValid) return; // E-01: no arranca con duración inválida
+    setExamModalVisible(false);
+    router.push({
+      pathname: '/tablero/[id]/quiz',
+      params: {
+        id: typeof id === 'string' ? id : id?.[0] || '',
+        examMode: '1',
+        duration: String(resolvedDuration),
+      },
+    });
+  };
+
   // Altura del teclado para empujar el sheet
   const [kbHeight, setKbHeight] = useState(0);
   useEffect(() => {
@@ -348,6 +378,30 @@ export default function TareasScreen() {
             >
               <Text style={{ color: c.textPrimary }} className="text-base font-bold">Iniciar Práctica (Quiz)</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: 'rgba(255,149,90,0.06)',
+                borderColor: 'rgba(255,149,90,0.4)',
+                borderWidth: 1.5,
+                marginTop: 12,
+              }}
+              className="w-full px-4 py-3 rounded-2xl flex-row items-center justify-between"
+              onPress={() => setExamModalVisible(true)}
+            >
+              <View className="flex-row items-center">
+                <Ionicons name="timer-outline" size={22} color="#FF955A" style={{ marginRight: 12 }} />
+                <View>
+                  <Text style={{ color: c.textPrimary }} className="text-base font-bold">
+                    Iniciar Modo Examen
+                  </Text>
+                  <Text style={{ color: c.textSecondary, fontSize: 11 }}>
+                    Con temporizador · presión real
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />
+            </TouchableOpacity>
           </View>
 
           {/* Cabecera de la lista */}
@@ -579,6 +633,137 @@ export default function TareasScreen() {
               >
                 <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
               </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Modal Configurar Modo Examen */}
+      <Modal visible={examModalVisible} transparent animationType="slide" onRequestClose={() => setExamModalVisible(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={() => setExamModalVisible(false)}>
+          <Pressable
+            style={{ backgroundColor: c.surface, paddingBottom: 32 }}
+            className="rounded-t-3xl px-6 pt-2"
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View className="items-center mb-4 mt-2">
+              <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
+            </View>
+
+            <View className="items-center mb-4 mt-2">
+              <View style={{ backgroundColor: 'rgba(255,149,90,0.15)' }} className="w-16 h-16 rounded-2xl items-center justify-center">
+                <Ionicons name="timer-outline" size={32} color="#FF955A" />
+              </View>
+            </View>
+
+            <Text style={{ color: c.textPrimary }} className="text-xl font-bold text-center mb-2">
+              Configurar Modo Examen
+            </Text>
+            <Text style={{ color: c.textSecondary }} className="text-sm text-center mb-6 leading-5">
+              Elegí la duración del temporizador.{'\n'}Al llegar a 0, la sesión se cierra automáticamente.
+            </Text>
+
+            {/* Preset chips */}
+            <View className="flex-row justify-between mb-4">
+              {EXAM_PRESETS.map((min) => {
+                const isSel = !customDuration && selectedDuration === min;
+                return (
+                  <TouchableOpacity
+                    key={min}
+                    onPress={() => {
+                      setSelectedDuration(min);
+                      setCustomDuration('');
+                    }}
+                    style={{
+                      backgroundColor: isSel ? 'rgba(165,149,249,0.18)' : c.background,
+                      borderColor: isSel ? c.accentStrong : c.border,
+                      borderWidth: 1.5,
+                      width: '23%',
+                    }}
+                    className="py-3 rounded-2xl items-center justify-center"
+                  >
+                    <Text style={{ color: isSel ? c.accentStrong : c.textPrimary, fontSize: 20, fontWeight: '800' }}>
+                      {min}
+                    </Text>
+                    <Text style={{ color: c.textSecondary, fontSize: 10, marginTop: 2 }}>minutos</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Custom */}
+            <Text style={{ color: c.textSecondary }} className="text-xs font-semibold mb-2 ml-1">
+              O INGRESÁ UNA DURACIÓN PERSONALIZADA
+            </Text>
+            <View
+              style={{
+                backgroundColor: c.background,
+                borderWidth: !durationIsValid && customDuration.trim() ? 1.5 : 0,
+                borderColor: '#EF4444',
+              }}
+              className="flex-row items-center px-4 rounded-xl mb-2"
+            >
+              <TextInput
+                style={{
+                  color: !durationIsValid && customDuration.trim() ? '#EF4444' : c.textPrimary,
+                  fontSize: 16,
+                  fontWeight: '600',
+                  flex: 1,
+                  paddingVertical: 14,
+                }}
+                placeholder="Ej: 45"
+                placeholderTextColor={c.textSecondary}
+                keyboardType="numeric"
+                value={customDuration}
+                onChangeText={setCustomDuration}
+              />
+              <Text style={{ color: c.textSecondary, fontSize: 13 }}>minutos</Text>
+            </View>
+            {!durationIsValid && customDuration.trim() ? (
+              <View className="flex-row items-center mb-4 ml-1">
+                <Ionicons name="warning-outline" size={14} color="#EF4444" />
+                <Text style={{ color: '#EF4444', fontSize: 12, marginLeft: 6, fontWeight: '500' }}>
+                  La duración debe ser entre {EXAM_MIN_MIN} y {EXAM_MAX_MIN} minutos.
+                </Text>
+              </View>
+            ) : (
+              <View className="mb-4" />
+            )}
+
+            {/* Info card */}
+            <View
+              style={{
+                backgroundColor: 'rgba(255,149,90,0.08)',
+                borderColor: 'rgba(255,149,90,0.3)',
+                borderWidth: 1,
+              }}
+              className="px-4 py-3 rounded-xl mb-5 flex-row"
+            >
+              <Ionicons name="information-circle-outline" size={18} color="#FF955A" style={{ marginRight: 8, marginTop: 1 }} />
+              <View className="flex-1">
+                <Text style={{ color: '#FF955A', fontSize: 12, fontWeight: '700', marginBottom: 2 }}>
+                  Modo Examen
+                </Text>
+                <Text style={{ color: c.textSecondary, fontSize: 11, lineHeight: 15 }}>
+                  Sin ver respuestas, orden aleatorio y tiempo continuo. No se puede pausar.
+                </Text>
+              </View>
+            </View>
+
+            {/* Start */}
+            <TouchableOpacity
+              style={{ backgroundColor: c.accent, opacity: durationIsValid ? 1 : 0.35 }}
+              className="w-full py-4 rounded-xl items-center justify-center mb-2"
+              onPress={startExamMode}
+              disabled={!durationIsValid}
+            >
+              <Text style={{ color: c.textPrimary }} className="text-base font-bold">
+                {durationIsValid ? `Iniciar Examen (${resolvedDuration} min)` : 'Iniciar Examen'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity className="w-full py-3 items-center" onPress={() => setExamModalVisible(false)}>
+              <Text style={{ color: c.textSecondary }} className="text-sm">Cancelar</Text>
+            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
