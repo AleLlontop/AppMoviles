@@ -106,6 +106,7 @@ export default function RootLayout() {
         <Stack.Screen name="group/[id]/stats" options={{ headerShown: false }} />
         <Stack.Screen name="rachas" options={{ headerShown: false }} />
         <Stack.Screen name="logros" options={{ headerShown: false }} />
+        <Stack.Screen name="sesiones" options={{ headerShown: false }} />
       </Stack>
       <SessionSummaryModal />
       <AchievementUnlockedModalConnected />

@@ -14,6 +14,7 @@ import CalendarWidget from '@/components/statistics/CalendarWidget';
 import StatsChartWidget from '@/components/statistics/StatsChartWidget';
 import DonutChartsWidget from '@/components/statistics/DonutChartsWidget';
 import HistoryList from '@/components/statistics/HistoryList';
+import TagDistributionWidget from '@/components/statistics/TagDistributionWidget';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 
 type TabType = 'Day' | 'Week' | 'Month';
@@ -121,7 +122,7 @@ export default function EstadisticasScreen() {
     );
   }
 
-  const { calendar, summary, daySummary, distribution, history } = statsData;
+  const { calendar, summary, daySummary, distribution, history, rawSessions } = statsData;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.background }} edges={['top']}>
@@ -195,6 +196,7 @@ export default function EstadisticasScreen() {
             selectedTab={selectedTab}
           />
           <StatsChartWidget daySummary={daySummary} />
+          <TagDistributionWidget sessions={rawSessions ?? []} periodLabel={getPeriodLabel()} />
           <DonutChartsWidget distribution={distribution} />
           <HistoryList history={history} />
         </View>

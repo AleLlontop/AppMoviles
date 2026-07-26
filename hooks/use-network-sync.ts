@@ -14,6 +14,7 @@ async function syncSession(session: PendingSession): Promise<boolean> {
       duration: session.duration,
       status: 'completed',
       ...(session.userId ? { user_id: session.userId } : {}),
+      ...(session.tagId ? { tag_id: session.tagId } : {}),
     });
     if (insertError && isNetworkError(insertError)) return false;
     return true;

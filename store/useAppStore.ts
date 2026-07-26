@@ -20,6 +20,7 @@ export interface PendingSession {
   startTime: string;
   endTime: string;
   duration: number;
+  tagId?: string | null;
 }
 
 interface AppStore {
@@ -29,9 +30,10 @@ interface AppStore {
 
   // Cronómetro
   activeSubjectId: string | null;
+  activeTagId: string | null; // Etiqueta seleccionada al iniciar la sesión
   timerSeconds: number;
   sessionStartTime: string | null;
-  startTimer: (subjectId: string) => void;
+  startTimer: (subjectId: string, tagId?: string | null) => void;
   stopTimer: () => void;
   tick: () => void;
   recoverTimer: () => void;
@@ -109,17 +111,19 @@ export const useAppStore = create<AppStore>()(
       setTheme: (theme) => set({ theme }),
 
       activeSubjectId: null,
+      activeTagId: null,
       timerSeconds: 0,
       sessionStartTime: null,
-      startTimer: (subjectId) =>
+      startTimer: (subjectId, tagId = null) =>
         set({
           activeSubjectId: subjectId,
+          activeTagId: tagId,
           timerSeconds: 0,
           sessionStartTime: new Date().toISOString(),
           interruptions: 0,
         }),
       stopTimer: () =>
-        set({ activeSubjectId: null, timerSeconds: 0, sessionStartTime: null }),
+        set({ activeSubjectId: null, activeTagId: null, timerSeconds: 0, sessionStartTime: null }),
       tick: () => set((s) => ({ timerSeconds: s.timerSeconds + 1 })),
       // Recalcula los segundos reales desde sessionStartTime (RNF-04)
       recoverTimer: () => {
@@ -191,6 +195,7 @@ export const useAppStore = create<AppStore>()(
         theme: state.theme,
         // Persiste estado del cronómetro para RNF-04
         activeSubjectId: state.activeSubjectId,
+        activeTagId: state.activeTagId,
         sessionStartTime: state.sessionStartTime,
         // Persiste cola y caché para RNF-03
         pendingQueue: state.pendingQueue,
