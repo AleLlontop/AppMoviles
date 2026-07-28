@@ -120,7 +120,8 @@ export default function MetasScreen() {
   };
 
   const handleSaveGoal = async () => {
-    if (createMinutes < 30) return;
+    const maxMinutes = createPeriod === 'weekly' ? 10080 : 1440;
+    if (createMinutes < 30 || createMinutes > maxMinutes) return;
     setIsSaving(true);
     setSaveError(false);
     try {
@@ -192,7 +193,10 @@ export default function MetasScreen() {
   }
 
   if (currentView === 'create') {
-    const isInvalid = createMinutes < 30;
+    const maxMinutes = createPeriod === 'weekly' ? 10080 : 1440;
+    const isBelowMin = createMinutes < 30;
+    const isAboveMax = createMinutes > maxMinutes;
+    const isInvalid = isBelowMin || isAboveMax;
     const dailyRecommendationFromWeekly = weeklyGoal ? Math.ceil((weeklyGoal.target_minutes / 7) / 10) * 10 : 0;
 
     return (
@@ -270,7 +274,11 @@ export default function MetasScreen() {
           </View>
 
           {isInvalid && (
-            <Text style={{ color: '#EF4444' }} className="text-xs mb-6 ml-2">• Elegí al menos 30 minutos de estudio</Text>
+            <Text style={{ color: '#EF4444' }} className="text-xs mb-6 ml-2">
+              • {isBelowMin
+                ? 'Elegí al menos 30 minutos de estudio'
+                : `El máximo es ${formatTime(maxMinutes)} por ${createPeriod === 'weekly' ? 'semana' : 'día'}`}
+            </Text>
           )}
 
           <View className="flex-row justify-center items-center gap-6 mt-2 mb-6">
