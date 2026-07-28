@@ -403,6 +403,12 @@ export default function GroupDetailScreen() {
             {/* RUTAS ARREGLADAS (Usando comillas invertidas) */}
             <NavRow
               colors={c}
+              icon="chatbubbles"
+              label="Chat de grupo"
+              onPress={() => router.push(`/group/${group.id}/chat`)}
+            />
+            <NavRow
+              colors={c}
               icon="list"
               label="Actividades"
               onPress={() => router.push(`/group/${group.id}/activities`)}

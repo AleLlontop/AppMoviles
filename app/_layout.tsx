@@ -92,6 +92,7 @@ export default function RootLayout() {
         <Stack.Screen name="group/[id]/index" options={{ headerShown: false }} />
         <Stack.Screen name="group/[id]/manage" options={{ headerShown: false }} />
         <Stack.Screen name="group/[id]/stats" options={{ headerShown: false }} />
+        <Stack.Screen name="group/[id]/chat" options={{ headerShown: false }} />
         <Stack.Screen name="rachas" options={{ headerShown: false }} />
       </Stack>
       <SessionSummaryModal />
