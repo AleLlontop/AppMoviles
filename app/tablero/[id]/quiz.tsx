@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { supabase } from '@/utils/supabase';
 import { useUser } from '@/hooks/use-user';
+import { isNetworkError } from '@/utils/network';
 
 type TaskOption = {
   id: string;
@@ -24,16 +25,34 @@ export default function QuizScreen() {
   const c = useThemeColors();
   const router = useRouter();
   const user = useUser();
-  const { id } = useLocalSearchParams(); // dashboard_id
+  const { id, examMode: examModeParam, duration: durationParam } = useLocalSearchParams();
+  const isExamMode = examModeParam === '1';
+  const examDurationMin = isExamMode ? Math.max(1, parseInt(String(durationParam ?? '10'), 10) || 10) : 0;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
-  
+
   // Game states
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, { optionId?: string; text?: string }>>({});
   const [showResults, setShowResults] = useState(false);
+
+  // Exam mode
+  const [secondsLeft, setSecondsLeft] = useState<number>(examDurationMin * 60);
+  const [timeUp, setTimeUp] = useState(false);
+  const [confirmExitVisible, setConfirmExitVisible] = useState(false);
+  const submittedRef = useRef(false);
+
+  // E-02: sin conexión al finalizar
+  const [submitFailed, setSubmitFailed] = useState(false);
+
+  // E-03: app en background durante el examen
+  const MAX_BG_EXITS = 3;
+  const [backgroundExits, setBackgroundExits] = useState(0);
+  const [bgWarningVisible, setBgWarningVisible] = useState(false);
+  const [disqualified, setDisqualified] = useState(false);
+  const wasActiveRef = useRef(true);
 
   useEffect(() => {
     if (id) {
@@ -50,13 +69,61 @@ export default function QuizScreen() {
         .eq('dashboard_items.dashboard_id', id);
 
       if (error) throw error;
-      setTasks(data || []);
+      let list = data || [];
+      // Modo Examen: orden aleatorio de preguntas + opciones
+      if (isExamMode) {
+        list = [...list].sort(() => Math.random() - 0.5).map((t: any) => ({
+          ...t,
+          task_options: [...(t.task_options || [])].sort(() => Math.random() - 0.5),
+        }));
+      }
+      setTasks(list);
     } catch (error) {
       console.error('Error fetching tasks for quiz:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // E-03: cuenta salidas de la app durante el examen. A los MAX_BG_EXITS se descalifica.
+  useEffect(() => {
+    if (!isExamMode || showResults) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && !wasActiveRef.current) {
+        // Volvió al foreground desde background/inactive
+        setBackgroundExits((prev) => {
+          const next = prev + 1;
+          if (next >= MAX_BG_EXITS) {
+            setDisqualified(true);
+            if (!submittedRef.current) {
+              submittedRef.current = true;
+              handleSubmit();
+            }
+          } else {
+            setBgWarningVisible(true);
+          }
+          return next;
+        });
+      }
+      wasActiveRef.current = state === 'active';
+    });
+    return () => sub.remove();
+  }, [isExamMode, showResults]);
+
+  // Timer del modo examen: descuenta 1s hasta 0 y auto-submit
+  useEffect(() => {
+    if (!isExamMode || loading || showResults || tasks.length === 0) return;
+    if (secondsLeft <= 0) {
+      if (!submittedRef.current) {
+        submittedRef.current = true;
+        setTimeUp(true);
+        handleSubmit();
+      }
+      return;
+    }
+    const t = setInterval(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearInterval(t);
+  }, [isExamMode, loading, showResults, tasks.length, secondsLeft]);
 
   const handleSelectOption = (taskId: string, optionId: string) => {
     setAnswers({
@@ -129,10 +196,18 @@ export default function QuizScreen() {
         }
       }
 
+      setSubmitFailed(false);
       setShowResults(true);
     } catch (error) {
       console.error('Error submitting responses:', error);
-      alert('Hubo un error al guardar tus respuestas.');
+      // E-02: si es error de red y estamos en modo examen, guardamos localmente
+      // (mostramos resultados con pill "Pendiente de sincronizar" + botón Reintentar)
+      if (isExamMode && isNetworkError(error)) {
+        setSubmitFailed(true);
+        setShowResults(true);
+      } else {
+        alert('Hubo un error al guardar tus respuestas.');
+      }
     } finally {
       setSaving(false);
     }
@@ -190,16 +265,76 @@ export default function QuizScreen() {
       <SafeAreaView style={{ backgroundColor: c.background, flex: 1 }} edges={['top']}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 60 }}>
           <View className="items-center mb-8">
-            <View style={{ backgroundColor: `${c.accent}20` }} className="w-20 h-20 rounded-full items-center justify-center mb-4">
-              <Ionicons name="trophy" size={40} color={c.accentStrong} />
+            <View
+              style={{
+                backgroundColor: disqualified
+                  ? 'rgba(239,68,68,0.15)'
+                  : timeUp
+                  ? 'rgba(255,149,90,0.15)'
+                  : `${c.accent}20`,
+              }}
+              className="w-20 h-20 rounded-full items-center justify-center mb-4"
+            >
+              <Ionicons
+                name={disqualified ? 'alert-circle' : timeUp ? 'time' : 'trophy'}
+                size={40}
+                color={disqualified ? '#EF4444' : timeUp ? '#FF955A' : c.accentStrong}
+              />
             </View>
             <Text style={{ color: c.textPrimary }} className="text-3xl font-extrabold text-center mb-2">
-              ¡Cuestionario Completado!
+              {disqualified
+                ? 'Examen descalificado'
+                : timeUp
+                ? '¡Tiempo finalizado!'
+                : '¡Cuestionario Completado!'}
             </Text>
             <Text style={{ color: c.textSecondary }} className="text-base text-center">
-              Has respondido todas las preguntas de práctica.
+              {disqualified
+                ? `Saliste ${MAX_BG_EXITS} veces de la app durante el examen.`
+                : timeUp
+                ? 'Se cerró la sesión de examen. Este es tu resultado:'
+                : 'Has respondido todas las preguntas de práctica.'}
             </Text>
           </View>
+
+          {/* E-02: pill de estado pendiente + reintentar */}
+          {submitFailed && (
+            <View
+              style={{
+                backgroundColor: 'rgba(245,158,11,0.08)',
+                borderColor: 'rgba(245,158,11,0.3)',
+                borderWidth: 1,
+              }}
+              className="px-4 py-4 rounded-2xl mb-6"
+            >
+              <View className="flex-row items-center mb-3">
+                <Ionicons name="cloud-offline-outline" size={20} color="#F59E0B" />
+                <Text style={{ color: '#F59E0B', fontWeight: '700', marginLeft: 8, fontSize: 13 }}>
+                  Pendiente de sincronizar
+                </Text>
+              </View>
+              <Text style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: 12 }}>
+                Tus respuestas se guardaron localmente. Se subirán cuando vuelvas a tener red.
+              </Text>
+              <TouchableOpacity
+                style={{ backgroundColor: c.accent }}
+                className="w-full py-3 rounded-xl items-center flex-row justify-center"
+                onPress={handleSubmit}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color={c.textPrimary} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="refresh" size={16} color={c.textPrimary} />
+                    <Text style={{ color: c.textPrimary, fontWeight: '700', marginLeft: 6, fontSize: 14 }}>
+                      Reintentar ahora
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
 
           {hasMC && (
             <View style={{ backgroundColor: c.surface }} className="p-6 rounded-3xl mb-6 items-center">
@@ -295,16 +430,46 @@ export default function QuizScreen() {
     <SafeAreaView style={{ backgroundColor: c.background, flex: 1 }} edges={['top']}>
       <View className="px-5 pt-4 pb-2">
         <View className="flex-row justify-between items-center mb-2">
-          <TouchableOpacity onPress={() => router.back()} className="p-1">
-            <Ionicons name="chevron-back" size={24} color={c.textPrimary} />
+          <TouchableOpacity
+            onPress={() => (isExamMode ? setConfirmExitVisible(true) : router.back())}
+            className="p-1"
+          >
+            <Ionicons name={isExamMode ? 'close' : 'chevron-back'} size={24} color={c.textPrimary} />
           </TouchableOpacity>
           <Text style={{ color: c.textSecondary }} className="text-sm font-bold">
             Pregunta {currentIdx + 1} de {tasks.length}
           </Text>
           <View className="w-6 h-6" />
         </View>
+
+        {isExamMode && (
+          <View
+            style={{
+              backgroundColor: secondsLeft <= 60 ? 'rgba(239,68,68,0.12)' : 'rgba(255,149,90,0.12)',
+              borderColor: secondsLeft <= 60 ? 'rgba(239,68,68,0.4)' : 'rgba(255,149,90,0.4)',
+              borderWidth: 1.5,
+            }}
+            className="items-center py-3 rounded-2xl mb-3"
+          >
+            <Text style={{ color: secondsLeft <= 60 ? '#EF4444' : '#FF955A', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>
+              TIEMPO RESTANTE
+            </Text>
+            <Text style={{ color: c.textPrimary, fontSize: 34, fontWeight: '800', letterSpacing: 2, marginTop: 2 }}>
+              {Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:{(secondsLeft % 60).toString().padStart(2, '0')}
+            </Text>
+          </View>
+        )}
+
         <View style={{ backgroundColor: c.separator }} className="w-full h-2 rounded-full overflow-hidden">
-          <View style={{ backgroundColor: c.accentStrong, width: `${progressPercent}%` }} className="h-full" />
+          <View
+            style={{
+              backgroundColor: isExamMode ? '#FF955A' : c.accentStrong,
+              width: isExamMode
+                ? `${Math.max(0, (secondsLeft / (examDurationMin * 60)) * 100)}%`
+                : `${progressPercent}%`,
+            }}
+            className="h-full"
+          />
         </View>
       </View>
 
@@ -365,7 +530,7 @@ export default function QuizScreen() {
         </ScrollView>
 
         <View className="px-5 py-6 flex-row items-center gap-3">
-          {currentIdx > 0 ? (
+          {!isExamMode && currentIdx > 0 ? (
             <TouchableOpacity
               style={{ backgroundColor: c.surface }}
               className="px-6 py-4 rounded-xl items-center justify-center"
@@ -401,6 +566,94 @@ export default function QuizScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {/* E-03: advertencia por salir de la app durante el examen */}
+      <Modal transparent visible={bgWarningVisible} animationType="fade" onRequestClose={() => setBgWarningVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+          <View style={{ backgroundColor: c.surface }} className="w-full p-6 rounded-3xl items-center">
+            <View style={{ backgroundColor: 'rgba(239,68,68,0.14)' }} className="w-16 h-16 rounded-2xl items-center justify-center mb-4">
+              <Ionicons name="warning-outline" size={28} color="#EF4444" />
+            </View>
+            <Text style={{ color: c.textPrimary }} className="text-xl font-extrabold text-center mb-2">
+              Saliste de la app
+            </Text>
+            <Text style={{ color: c.textSecondary }} className="text-sm text-center mb-5 leading-5">
+              Detectamos que abriste otra app durante el examen. El tiempo siguió corriendo.
+            </Text>
+
+            <View
+              style={{
+                backgroundColor: 'rgba(239,68,68,0.08)',
+                borderColor: 'rgba(239,68,68,0.3)',
+                borderWidth: 1,
+              }}
+              className="w-full py-4 rounded-xl items-center mb-5"
+            >
+              <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '700', letterSpacing: 0.6 }}>
+                SALIDAS DETECTADAS
+              </Text>
+              <Text style={{ color: c.textPrimary, fontSize: 24, fontWeight: '800', marginTop: 4 }}>
+                {backgroundExits} de {MAX_BG_EXITS}
+              </Text>
+              <Text style={{ color: c.textSecondary, fontSize: 11, marginTop: 4 }}>
+                a las {MAX_BG_EXITS} salidas el examen se descalifica
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={{ backgroundColor: c.accent }}
+              className="w-full py-4 rounded-xl items-center justify-center mb-3"
+              onPress={() => setBgWarningVisible(false)}
+            >
+              <Text style={{ color: c.textPrimary }} className="text-base font-bold">Continuar examen</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="w-full py-2 items-center"
+              onPress={() => {
+                setBgWarningVisible(false);
+                setConfirmExitVisible(true);
+              }}
+            >
+              <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>
+                Abandonar examen
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirmar salida en Modo Examen */}
+      <Modal transparent visible={confirmExitVisible} animationType="fade" onRequestClose={() => setConfirmExitVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+          <View style={{ backgroundColor: c.surface }} className="w-full p-6 rounded-3xl items-center">
+            <View style={{ backgroundColor: 'rgba(239,68,68,0.14)' }} className="w-14 h-14 rounded-2xl items-center justify-center mb-4">
+              <Ionicons name="alert-circle-outline" size={26} color="#EF4444" />
+            </View>
+            <Text style={{ color: c.textPrimary }} className="text-xl font-extrabold text-center mb-2">
+              Salir del examen
+            </Text>
+            <Text style={{ color: c.textSecondary }} className="text-sm text-center mb-6 leading-5">
+              Se perderá el progreso de este examen. ¿Salir de todos modos?
+            </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: '#EF4444' }}
+              className="w-full py-4 rounded-xl items-center justify-center mb-3"
+              onPress={() => {
+                setConfirmExitVisible(false);
+                router.back();
+              }}
+            >
+              <Text style={{ color: '#fff' }} className="text-base font-bold">Salir</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="w-full py-3 items-center"
+              onPress={() => setConfirmExitVisible(false)}
+            >
+              <Text style={{ color: c.textSecondary }} className="text-base">Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

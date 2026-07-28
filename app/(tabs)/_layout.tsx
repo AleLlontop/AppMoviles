@@ -93,6 +93,14 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="bar-chart" focused={focused} size={24} inactiveColor={c.textSecondary} />,
         }}
       />
+      {/* NUEVA PESTAÑA DE METAS */}
+      <Tabs.Screen
+        name="metas"
+        options={{
+          title: 'Metas',
+          tabBarIcon: ({ focused }) => <TabIcon name="flag" focused={focused} size={24} inactiveColor={c.textSecondary} />,
+        }}
+      />
       <Tabs.Screen
         name="more"
         options={{

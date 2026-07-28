@@ -3,12 +3,15 @@ import { View, Text, ScrollView, TouchableOpacity, Alert, AppState } from 'react
 import { TaskCard } from '@/components/TaskCard';
 import { EditNameSheet } from '@/components/EditNameSheet';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import LabelPickerSheet from '@/components/LabelPickerSheet';
+import PostSessionSaveModal from '@/components/PostSessionSaveModal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/utils/supabase';
 import { useUser } from '@/hooks/use-user';
 import { useAppStore } from '@/store/useAppStore';
+import { checkAchievementConditions } from '@/services/achievementsService';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { isNetworkError } from '@/utils/network';
@@ -27,6 +30,7 @@ export default function HomeScreen() {
 
   const {
     activeSubjectId,
+    activeTagId,
     timerSeconds,
     sessionStartTime,
     startTimer,
@@ -40,6 +44,15 @@ export default function HomeScreen() {
     setOnlineStatus,
     pendingQueue,
   } = useAppStore();
+
+  // Etiquetas de sesión (RF-XX)
+  const [labelPickerSubject, setLabelPickerSubject] = useState<{ id: string; name: string } | null>(null);
+  const [saveModalData, setSaveModalData] = useState<{
+    subjectId: string;
+    startTime: Date;
+    duration: number;
+    tagId: string | null;
+  } | null>(null);
 
   // Activa el sync en background (RNF-03)
   useNetworkSync();
@@ -105,7 +118,12 @@ export default function HomeScreen() {
     };
   }, [activeSubjectId]);
 
-  const saveSession = async (subjectId: string, start: Date, durationSeconds: number) => {
+  const saveSession = async (
+    subjectId: string,
+    start: Date,
+    durationSeconds: number,
+    tagId: string | null = null,
+  ) => {
     // Cada stop del timer = una sesión nueva. Nada de coalescing por día:
     // mantiene fidelidad del historial (rango real == duración) y el adapter
     // de estadísticas igual agrupa por día/materia al render.
@@ -119,10 +137,25 @@ export default function HomeScreen() {
         duration: durationSeconds,
         status: 'completed',
         ...(userId ? { user_id: userId } : {}),
+        ...(tagId ? { tag_id: tagId } : {}),
       });
       if (insertError) throw insertError;
 
       setOnlineStatus(true);
+
+      // Verificar si se desbloquearon logros
+      if (userId) {
+        try {
+          const newlyUnlocked = await checkAchievementConditions(userId);
+          if (newlyUnlocked.length > 0) {
+            // Mostrar el primer logro desbloqueado
+            const store = useAppStore.getState();
+            store.showAchievementUnlocked(newlyUnlocked[0]);
+          }
+        } catch (error) {
+          console.error('Error checking achievements:', error);
+        }
+      }
     } catch (e) {
       if (isNetworkError(e)) {
         // Encola la sesión para sincronizar cuando vuelva la conexión (RNF-03)
@@ -133,6 +166,7 @@ export default function HomeScreen() {
           startTime: start.toISOString(),
           endTime: endTime.toISOString(),
           duration: durationSeconds,
+          tagId,
         });
         setOnlineStatus(false);
       }
@@ -153,26 +187,54 @@ export default function HomeScreen() {
     });
   };
 
-  const toggleTimer = async (subjectId: string) => {
+  const toggleTimer = (subjectId: string) => {
     if (activeSubjectId === subjectId) {
+      // STOP: mostrar modal de confirmación con etiqueta pre-seleccionada
       if (sessionStartTime) {
         const duration = Math.floor(
           (new Date().getTime() - new Date(sessionStartTime).getTime()) / 1000
         );
-        await saveSession(subjectId, new Date(sessionStartTime), duration);
-        maybeShowSummary(subjectId, duration);
+        setSaveModalData({
+          subjectId,
+          startTime: new Date(sessionStartTime),
+          duration,
+          tagId: activeTagId,
+        });
+      } else {
+        stopTimer();
       }
-      stopTimer();
     } else {
+      // START: si ya hay una sesión activa, pedirle también su confirmación
       if (activeSubjectId && sessionStartTime) {
         const duration = Math.floor(
           (new Date().getTime() - new Date(sessionStartTime).getTime()) / 1000
         );
-        await saveSession(activeSubjectId, new Date(sessionStartTime), duration);
-        maybeShowSummary(activeSubjectId, duration);
+        setSaveModalData({
+          subjectId: activeSubjectId,
+          startTime: new Date(sessionStartTime),
+          duration,
+          tagId: activeTagId,
+        });
       }
-      startTimer(subjectId);
+      // Abrir picker de etiquetas para arrancar nueva sesión
+      const subj = subjects.find((s) => s.id === subjectId);
+      setLabelPickerSubject({ id: subjectId, name: subj?.name ?? '' });
     }
+  };
+
+  const handleLabelPicked = (tagId: string) => {
+    if (!labelPickerSubject) return;
+    startTimer(labelPickerSubject.id, tagId);
+    setLabelPickerSubject(null);
+  };
+
+  const handlePostSessionSave = async (tagId: string | null) => {
+    if (!saveModalData) return;
+    const { subjectId, startTime, duration } = saveModalData;
+    setSaveModalData(null);
+    if (activeSubjectId === subjectId) stopTimer();
+    await saveSession(subjectId, startTime, duration, tagId);
+    maybeShowSummary(subjectId, duration);
   };
 
   const formatTime = (totalSeconds: number) => {
@@ -409,6 +471,25 @@ export default function HomeScreen() {
           setDeletingSubject(null);
         }}
         onCancel={() => setDeletingSubject(null)}
+      />
+
+      <LabelPickerSheet
+        visible={!!labelPickerSubject}
+        subjectName={labelPickerSubject?.name}
+        onClose={() => setLabelPickerSubject(null)}
+        onConfirm={handleLabelPicked}
+      />
+
+      <PostSessionSaveModal
+        visible={!!saveModalData}
+        durationSeconds={saveModalData?.duration ?? 0}
+        initialTagId={saveModalData?.tagId ?? null}
+        onSave={handlePostSessionSave}
+        onClose={() => {
+          // Cerrar sin guardar = descartar la sesión (equivalente a stop sin guardar)
+          if (saveModalData && activeSubjectId === saveModalData.subjectId) stopTimer();
+          setSaveModalData(null);
+        }}
       />
 
       <EditNameSheet

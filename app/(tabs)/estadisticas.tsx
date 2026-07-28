@@ -14,6 +14,7 @@ import CalendarWidget from '@/components/statistics/CalendarWidget';
 import StatsChartWidget from '@/components/statistics/StatsChartWidget';
 import DonutChartsWidget from '@/components/statistics/DonutChartsWidget';
 import HistoryList from '@/components/statistics/HistoryList';
+import TagDistributionWidget from '@/components/statistics/TagDistributionWidget';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 
 type TabType = 'Day' | 'Week' | 'Month';
@@ -121,7 +122,7 @@ export default function EstadisticasScreen() {
     );
   }
 
-  const { calendar, summary, daySummary, distribution, history } = statsData;
+  const { calendar, summary, daySummary, distribution, history, rawSessions } = statsData;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.background }} edges={['top']}>
@@ -144,13 +145,28 @@ export default function EstadisticasScreen() {
         {/* Racha banner */}
         <TouchableOpacity
           onPress={() => router.push('/rachas')}
-          style={[styles.streakBanner, { backgroundColor: c.surface }]}
+          style={[styles.streakBanner, { backgroundColor: c.surface, marginBottom: 17 , marginTop: 15}]}
           activeOpacity={0.7}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Ionicons name="flame" size={20} color="#FF6B35" />
             <Text style={[styles.streakBannerText, { color: c.textPrimary }]}>
               Mi racha de estudio
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />
+        </TouchableOpacity>
+
+        {/* Logros banner */}
+        <TouchableOpacity
+          onPress={() => router.push('/logros')}
+          style={[styles.streakBanner, { backgroundColor: c.surface }]}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 18 }}>🏆</Text>
+            <Text style={[styles.streakBannerText, { color: c.textPrimary }]}>
+              Mis logros
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />
@@ -180,6 +196,7 @@ export default function EstadisticasScreen() {
             selectedTab={selectedTab}
           />
           <StatsChartWidget daySummary={daySummary} />
+          <TagDistributionWidget sessions={rawSessions ?? []} periodLabel={getPeriodLabel()} />
           <DonutChartsWidget distribution={distribution} />
           <HistoryList history={history} />
         </View>

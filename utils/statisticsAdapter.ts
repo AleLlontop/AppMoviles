@@ -227,6 +227,7 @@ export const adaptStatisticsData = (
     sessionDetail,
     daySummary,
     history,
+    rawSessions: sessions,
   };
 };
 

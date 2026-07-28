@@ -22,7 +22,7 @@ export const getStudySessions = async (startDate: string, endDate: string) => {
   if (!user) return [];
   const { data, error } = await supabase
     .from('study_sessions')
-    .select('*, subjects(*)')
+    .select('*, subjects(*), tags(id, slug, label, color)')
     .eq('user_id', user.id)
     .gte('start_time', startDate)
     .lte('start_time', endDate)

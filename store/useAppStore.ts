@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Achievement } from '@/services/achievementsService';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -19,6 +20,7 @@ export interface PendingSession {
   startTime: string;
   endTime: string;
   duration: number;
+  tagId?: string | null;
 }
 
 interface AppStore {
@@ -28,9 +30,10 @@ interface AppStore {
 
   // Cronómetro
   activeSubjectId: string | null;
+  activeTagId: string | null; // Etiqueta seleccionada al iniciar la sesión
   timerSeconds: number;
   sessionStartTime: string | null;
-  startTimer: (subjectId: string) => void;
+  startTimer: (subjectId: string, tagId?: string | null) => void;
   stopTimer: () => void;
   tick: () => void;
   recoverTimer: () => void;
@@ -91,6 +94,14 @@ interface AppStore {
   demoGroupPresence: Record<string, PresenceMap>;
   setDemoGroupPresence: (groupId: string, map: PresenceMap) => void;
   clearAllDemoPresence: () => void;
+
+  // Logros desbloqueados
+  unlockedAchievements: {
+    visible: boolean;
+    achievement: Achievement | null;
+  };
+  showAchievementUnlocked: (achievement: Achievement) => void;
+  hideAchievementUnlocked: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -100,17 +111,19 @@ export const useAppStore = create<AppStore>()(
       setTheme: (theme) => set({ theme }),
 
       activeSubjectId: null,
+      activeTagId: null,
       timerSeconds: 0,
       sessionStartTime: null,
-      startTimer: (subjectId) =>
+      startTimer: (subjectId, tagId = null) =>
         set({
           activeSubjectId: subjectId,
+          activeTagId: tagId,
           timerSeconds: 0,
           sessionStartTime: new Date().toISOString(),
           interruptions: 0,
         }),
       stopTimer: () =>
-        set({ activeSubjectId: null, timerSeconds: 0, sessionStartTime: null }),
+        set({ activeSubjectId: null, activeTagId: null, timerSeconds: 0, sessionStartTime: null }),
       tick: () => set((s) => ({ timerSeconds: s.timerSeconds + 1 })),
       // Recalcula los segundos reales desde sessionStartTime (RNF-04)
       recoverTimer: () => {
@@ -168,6 +181,12 @@ export const useAppStore = create<AppStore>()(
       setDemoGroupPresence: (groupId, map) =>
         set((s) => ({ demoGroupPresence: { ...s.demoGroupPresence, [groupId]: map } })),
       clearAllDemoPresence: () => set({ demoGroupPresence: {} }),
+
+      unlockedAchievements: { visible: false, achievement: null },
+      showAchievementUnlocked: (achievement) =>
+        set({ unlockedAchievements: { visible: true, achievement } }),
+      hideAchievementUnlocked: () =>
+        set({ unlockedAchievements: { visible: false, achievement: null } }),
     }),
     {
       name: 'app-store',
@@ -176,6 +195,7 @@ export const useAppStore = create<AppStore>()(
         theme: state.theme,
         // Persiste estado del cronómetro para RNF-04
         activeSubjectId: state.activeSubjectId,
+        activeTagId: state.activeTagId,
         sessionStartTime: state.sessionStartTime,
         // Persiste cola y caché para RNF-03
         pendingQueue: state.pendingQueue,
