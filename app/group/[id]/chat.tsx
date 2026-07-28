@@ -159,7 +159,7 @@ export default function GroupChatScreen() {
         console.error('Error al inicializar chat:', err);
       } finally {
         setLoading(false);
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
+        // El anclado inicial al final lo maneja onContentSizeChange de la lista.
       }
     };
 
@@ -970,7 +970,7 @@ export default function GroupChatScreen() {
       {/* Keyboard Avoiding Container for Body + Footer */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior="padding"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {/* Body */}
