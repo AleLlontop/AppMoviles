@@ -124,18 +124,30 @@ export default function MetasScreen() {
     setIsSaving(true);
     setSaveError(false);
     try {
-      const existingTargetId = createPeriod === 'daily' ? dailyGoal?.id : weeklyGoal?.id;
+      // Releemos la meta activa vigente de este período justo antes de guardar,
+      // en lugar de confiar en el estado en memoria (que puede estar desactualizado).
+      // Así evitamos insertar un duplicado cuando ya existe una meta activa.
+      const { data: existing, error: findError } = await supabase
+        .from('study_goals')
+        .select('id')
+        .eq('user_id', user!.id)
+        .eq('period', createPeriod)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      if (existingTargetId) {
-        await supabase
+      if (findError) throw findError;
+
+      if (existing) {
+        const { error: updateError } = await supabase
           .from('study_goals')
           .update({
-            period: createPeriod,
             target_minutes: createMinutes,
+            updated_at: new Date().toISOString(),
           })
-          .eq('id', existingTargetId);
+          .eq('id', existing.id);
+        if (updateError) throw updateError;
       } else {
-        await supabase
+        const { error: insertError } = await supabase
           .from('study_goals')
           .insert([{
             user_id: user!.id,
@@ -143,6 +155,7 @@ export default function MetasScreen() {
             target_minutes: createMinutes,
             is_active: true
           }]);
+        if (insertError) throw insertError;
       }
 
       await fetchGoalsAndProgress();
