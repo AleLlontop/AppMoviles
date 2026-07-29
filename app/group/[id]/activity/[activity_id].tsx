@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { supabase } from '@/utils/supabase';
 import { useUser } from '@/hooks/use-user';
-// IMPORTAMOS TU MODAL
 import { ConfirmModal } from '@/components/ConfirmModal';
 
 type TaskOption = { id: string; text: string; is_correct: boolean; };
@@ -23,25 +22,23 @@ export default function ActivityAndTasksScreen() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Form Actividad
   const [actTitle, setActTitle] = useState('');
   const [actType, setActType] = useState('task');
   const [actDuration, setActDuration] = useState('');
   const [actNotify, setActNotify] = useState(false);
   const [savingAct, setSavingAct] = useState(false);
 
-  // Tareas y Actividad Existente
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activityTitle, setActivityTitle] = useState('Actividad');
   const [currentActType, setCurrentActType] = useState('task');
   const [showAnswers, setShowAnswers] = useState(true);
 
-  // --- ESTADOS DEL TIMER LOCAL ---
   const [isRunning, setIsRunning] = useState(false);
-  const [seconds, setSeconds] = useState(0);
+  const [accumulatedSecs, setAccumulatedSecs] = useState(0);
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [displaySecs, setDisplaySecs] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Modal Tarea
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -50,13 +47,10 @@ export default function ActivityAndTasksScreen() {
   const [options, setOptions] = useState<string[]>(['', '']);
   const [correctOptionIndex, setCorrectOptionIndex] = useState<number>(0);
   const [kbHeight, setKbHeight] = useState(0);
-
-  // ESTADOS PARA LOS MODALES DE ELIMINAR
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [activityToDelete, setActivityToDelete] = useState<boolean>(false);
   const [deleting, setDeleting] = useState(false);
 
-  // EFECTO DE TECLADO PARA EL MODAL
   useEffect(() => {
     if (!createModalVisible) return;
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -65,47 +59,6 @@ export default function ActivityAndTasksScreen() {
     const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
     return () => { show.remove(); hide.remove(); };
   }, [createModalVisible]);
-
-  // --- LOGICA DEL TIMER ---
-  useEffect(() => {
-    // Limpieza al desmontar
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (currentActType !== 'timer') return;
-
-    if (isRunning) {
-      intervalRef.current = setInterval(() => {
-        setSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isRunning, currentActType]);
-
-  const handleToggleTimer = () => {
-    if (!isRunning) {
-      setSeconds(0);
-      setIsRunning(true);
-    } else {
-      setIsRunning(false);
-    }
-  };
-
-  const formatTime = (totalSecs: number) => {
-    const h = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
-    const m = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
-    const s = (totalSecs % 60).toString().padStart(2, '0');
-    return `${h}:${m}:${s}`;
-  };
-  // -------------------------
 
   useFocusEffect(
     useCallback(() => {
@@ -120,13 +73,16 @@ export default function ActivityAndTasksScreen() {
       setIsAdmin(roleData?.role === 'admin' || roleData?.role === 'owner' || roleData?.role === 'creator');
 
       if (!isNewActivity) {
-        const { data: actData } = await supabase.from('group_activities').select('title, type').eq('id', activity_id).single();
+        const { data: actData } = await supabase.from('group_activities').select('*').eq('id', activity_id).single();
         if (actData) {
           setActivityTitle(actData.title);
           setCurrentActType(actData.type);
 
-          // Solo buscamos tareas si no es timer
-          if (actData.type !== 'timer') {
+          if (actData.type === 'timer') {
+            setIsRunning(actData.is_running || false);
+            setAccumulatedSecs(actData.accumulated_seconds || 0);
+            setStartedAt(actData.started_at);
+          } else {
             await fetchTasks();
           }
         }
@@ -138,44 +94,92 @@ export default function ActivityAndTasksScreen() {
     }
   };
 
+  useEffect(() => {
+    if (currentActType !== 'timer' || !activity_id) return;
+    const channel = supabase.channel(`activity-${activity_id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'group_activities', filter: `id=eq.${activity_id}` },
+        (payload: any) => {
+          const newData = payload.new;
+          if (newData) {
+            setIsRunning(newData.is_running);
+            setAccumulatedSecs(newData.accumulated_seconds || 0);
+            setStartedAt(newData.started_at);
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [activity_id, currentActType]);
+
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (isRunning && startedAt) {
+      const startTimestamp = new Date(startedAt).getTime();
+      intervalRef.current = setInterval(() => {
+        const nowTimestamp = new Date().getTime();
+        const elapsedSinceStart = Math.floor((nowTimestamp - startTimestamp) / 1000);
+        setDisplaySecs(accumulatedSecs + elapsedSinceStart);
+      }, 1000);
+    } else {
+      setDisplaySecs(accumulatedSecs);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [isRunning, startedAt, accumulatedSecs]);
+
+  const handleToggleTimer = async () => {
+    if (!isAdmin) return;
+    try {
+      if (isRunning) {
+        const now = new Date().getTime();
+        const startTimestamp = new Date(startedAt!).getTime();
+        const elapsed = Math.floor((now - startTimestamp) / 1000);
+        const totalAccumulated = accumulatedSecs + elapsed;
+
+        setIsRunning(false);
+        setAccumulatedSecs(totalAccumulated);
+        setStartedAt(null);
+
+        const { data, error } = await supabase.from('group_activities').update({
+          is_running: false,
+          accumulated_seconds: totalAccumulated,
+          started_at: null
+        }).eq('id', activity_id).select();
+
+        if (error) throw error;
+        if (!data || data.length === 0) throw new Error("Supabase bloqueó el UPDATE. Revisá la política RLS.");
+      } else {
+        const nowIso = new Date().toISOString();
+        setIsRunning(true);
+        setStartedAt(nowIso);
+
+        const { data, error } = await supabase.from('group_activities').update({
+          is_running: true,
+          started_at: nowIso
+        }).eq('id', activity_id).select();
+
+        if (error) throw error;
+        if (!data || data.length === 0) throw new Error("Supabase bloqueó el UPDATE. Revisá la política RLS.");
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+      initScreenData();
+    }
+  };
+
+  const formatTime = (totalSecs: number) => {
+    const h = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
+    const m = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
+    const s = (totalSecs % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
+
   const fetchTasks = async () => {
     const { data, error } = await supabase.from('tasks').select('*, task_options(*)').eq('group_activity_id', activity_id).order('created_at', { ascending: true });
     if (!error) setTasks(data || []);
   };
 
-  const handleCreateActivity = async () => {
-    if (!actTitle.trim()) return Alert.alert('Error', 'El título es obligatorio.');
-
-    // Calculamos duración. Si es timer, es 0
-    let finalDuration = 0;
-    if (actType !== 'timer') {
-      if (!actDuration.trim() || isNaN(Number(actDuration))) {
-        return Alert.alert('Error', 'Duración inválida.');
-      }
-      finalDuration = parseInt(actDuration);
-    }
-
-    setSavingAct(true);
-    try {
-      const { data, error } = await supabase.from('group_activities').insert([{
-        group_id: group_id,
-        title: actTitle.trim(),
-        type: actType,
-        duration_min: finalDuration,
-        notify_all: actNotify,
-        created_by: user!.id
-      }]).select().single();
-
-      if (error) throw error;
-      router.replace({ pathname: '/group/[id]/activity/[activity_id]', params: { id: group_id, activity_id: data.id } });
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setSavingAct(false);
-    }
-  };
-
-  // FUNCIONES DEL MODAL DE ELIMINAR
   const confirmDeleteActivity = async () => {
     setDeleting(true);
     try {
@@ -239,7 +243,6 @@ export default function ActivityAndTasksScreen() {
     setCreatingTask(true);
     try {
       let targetTaskId = editingTaskId;
-
       if (editingTaskId) {
         await supabase.from('tasks').update({ question: trimmedQuestion, task_type: forcedTaskType }).eq('id', editingTaskId);
         await supabase.from('task_options').delete().eq('tasks_id', editingTaskId);
@@ -248,14 +251,12 @@ export default function ActivityAndTasksScreen() {
         if (insError) throw insError;
         targetTaskId = taskData!.id;
       }
-
       if (forcedTaskType === 'multiple_choice' && targetTaskId) {
         const insertOptions = options.map((text, idx) => ({ text: text.trim(), is_correct: idx === correctOptionIndex, tasks_id: targetTaskId })).filter(opt => opt.text !== '');
         await supabase.from('task_options').insert(insertOptions);
       } else if (forcedTaskType === 'open_answer' && openAnswerModel.trim() && targetTaskId) {
         await supabase.from('task_options').insert([{ text: openAnswerModel.trim(), is_correct: true, tasks_id: targetTaskId }]);
       }
-
       resetAndCloseModal();
       await fetchTasks();
     } catch (e: any) {
@@ -271,7 +272,9 @@ export default function ActivityAndTasksScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <SafeAreaView style={{ backgroundColor: c.background, flex: 1 }} edges={['top']}>
           <View className="flex-row items-center px-5 pt-4 pb-2">
-            <TouchableOpacity onPress={() => router.back()} className="mr-4"><Ionicons name="chevron-back" size={24} color={c.textPrimary} /></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.back()} className="mr-4">
+              <Ionicons name="chevron-back" size={24} color={c.textPrimary} />
+            </TouchableOpacity>
             <Text style={{ color: c.textPrimary }} className="text-2xl font-bold flex-1">Nueva Actividad</Text>
           </View>
           <ScrollView contentContainerStyle={{ padding: 20 }}>
@@ -288,7 +291,6 @@ export default function ActivityAndTasksScreen() {
                 ))}
               </View>
 
-              {/* OCULTAMOS LA DURACIÓN SI ES TIMER */}
               {actType !== 'timer' && (
                 <>
                   <Text style={{ color: c.textSecondary }} className="text-sm font-semibold mb-2 ml-1">Duración (minutos)</Text>
@@ -301,7 +303,24 @@ export default function ActivityAndTasksScreen() {
                 <Switch value={actNotify} onValueChange={setActNotify} trackColor={{ true: c.accentStrong, false: c.separator }} />
               </View>
 
-              <TouchableOpacity style={{ backgroundColor: c.accent }} className="w-full py-4 rounded-xl items-center" onPress={handleCreateActivity} disabled={savingAct}>
+              <TouchableOpacity style={{ backgroundColor: c.accent }} className="w-full py-4 rounded-xl items-center" onPress={async () => {
+                if (!actTitle.trim()) return Alert.alert('Error', 'El título es obligatorio.');
+                let finalDuration = 0;
+                if (actType !== 'timer') {
+                  if (!actDuration.trim() || isNaN(Number(actDuration))) return Alert.alert('Error', 'Duración inválida.');
+                  finalDuration = parseInt(actDuration);
+                }
+                setSavingAct(true);
+                try {
+                  const { data, error } = await supabase.from('group_activities').insert([{ group_id, title: actTitle.trim(), type: actType, duration_min: finalDuration, notify_all: actNotify, created_by: user!.id }]).select().single();
+                  if (error) throw error;
+                  router.replace({ pathname: '/group/[id]/activity/[activity_id]', params: { id: group_id, activity_id: data.id } });
+                } catch (error: any) {
+                  Alert.alert('Error', error.message);
+                } finally {
+                  setSavingAct(false);
+                }
+              }} disabled={savingAct}>
                 {savingAct ? <ActivityIndicator color={c.textPrimary} /> : <Text style={{ color: c.textPrimary }} className="text-base font-bold">Guardar y Continuar</Text>}
               </TouchableOpacity>
             </View>
@@ -316,7 +335,9 @@ export default function ActivityAndTasksScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={{ backgroundColor: c.background, flex: 1 }} edges={['top']}>
         <View className="flex-row items-center px-5 pt-4 pb-2">
-          <TouchableOpacity onPress={() => router.back()} className="mr-4"><Ionicons name="chevron-back" size={24} color={c.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} className="mr-4">
+            <Ionicons name="chevron-back" size={24} color={c.textPrimary} />
+          </TouchableOpacity>
           <Text style={{ color: c.textPrimary }} className="text-xl font-bold flex-1" numberOfLines={1}>{activityTitle}</Text>
           {isAdmin && (
             <TouchableOpacity onPress={() => setActivityToDelete(true)} className="p-2">
@@ -326,86 +347,68 @@ export default function ActivityAndTasksScreen() {
         </View>
 
         {loading ? (
-          <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" color={c.accent} /></View>
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color={c.accent} />
+          </View>
         ) : (
           <View className="flex-1 px-5 pt-4">
-
             {currentActType === 'timer' ? (
-              // ==================================
-              // VISTA DEL CRONÓMETRO
-              // ==================================
-              <View style={{ backgroundColor: c.surface }} className="p-8 rounded-3xl items-center mt-10">
+              <View style={{ backgroundColor: c.surface }} className="p-8 rounded-3xl items-center mt-10 shadow-lg">
                 <View style={{ backgroundColor: `${c.accent}20` }} className="p-4 rounded-full mb-6">
                   <Ionicons name="timer-outline" size={48} color={c.accentStrong} />
                 </View>
-                <Text style={{ color: c.textSecondary, letterSpacing: 2, fontWeight: 'bold' }}>
-                  CRONÓMETRO LOCAL
+                <Text style={{ color: c.textSecondary, letterSpacing: 2, fontWeight: 'bold', fontSize: 12, marginBottom: 10 }}>TIEMPO DE ESTUDIO EN VIVO</Text>
+                <Text style={{ color: isRunning ? '#10B981' : c.textPrimary, fontSize: 64, fontWeight: '900', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', marginVertical: 10 }}>
+                  {formatTime(displaySecs)}
                 </Text>
-
-                <Text
-                  style={{
-                    color: isRunning ? '#10B981' : c.textPrimary,
-                    fontSize: 64,
-                    fontWeight: '900',
-                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                    marginVertical: 20,
-                  }}
-                >
-                  {formatTime(seconds)}
-                </Text>
-
+                <View className="flex-row items-center mt-2 mb-8">
+                  <View className={`w-3 h-3 rounded-full mr-2 ${isRunning ? 'bg-emerald-500 animate-pulse' : 'bg-gray-500 animate-none'}`} />
+                  <Text style={{ color: c.textSecondary, fontSize: 14 }}>
+                    {isRunning ? 'Sesión activa (Transmitiendo)' : 'Cronómetro en pausa'}
+                  </Text>
+                </View>
                 {isAdmin ? (
-                  <TouchableOpacity
-                    onPress={handleToggleTimer}
-                    style={{
-                      backgroundColor: isRunning ? '#EF4444' : '#10B981',
-                      paddingVertical: 16,
-                      paddingHorizontal: 32,
-                      borderRadius: 100,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      marginTop: 10,
-                    }}
-                  >
+                  <TouchableOpacity onPress={handleToggleTimer} style={{ backgroundColor: isRunning ? '#EF4444' : '#10B981', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16, flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'center', marginTop: 10 }}>
                     <Ionicons name={isRunning ? 'stop' : 'play'} size={24} color="white" />
                     <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18, marginLeft: 10 }}>
-                      {isRunning ? 'Terminar Timer' : 'Iniciar Timer'}
+                      {isRunning ? 'Pausar Timer' : 'Iniciar Timer'}
                     </Text>
                   </TouchableOpacity>
                 ) : (
-                  <Text style={{ color: c.textSecondary, fontStyle: 'italic', textAlign: 'center', marginTop: 10 }}>
-                    Los alumnos solo pueden ver esta vista. El admin controla su propio cronómetro local.
-                  </Text>
+                  <View style={{ backgroundColor: c.background }} className="w-full py-4 rounded-2xl items-center border border-gray-800/10">
+                    <Text style={{ color: c.textSecondary, fontStyle: 'italic', textAlign: 'center' }}>
+                      {isRunning ? "El profesor está liderando la sesión en vivo." : "Esperando a que el profesor inicie la sesión..."}
+                    </Text>
+                  </View>
                 )}
               </View>
-
             ) : (
-              // ==================================
-              // VISTA DE FORM / TASK (Tu código original)
-              // ==================================
               <>
                 <View style={{ backgroundColor: c.surface }} className="p-6 rounded-3xl mb-6">
                   <View className="flex-row justify-between items-center mb-4">
-                    <View><Text style={{ color: c.textPrimary }} className="text-lg font-bold">{currentActType === 'form' ? 'Formulario (Choice)' : 'Tarea (Desarrollo)'}</Text><Text style={{ color: c.textSecondary }} className="text-sm">{tasks.length} Preguntas</Text></View>
+                    <View>
+                      <Text style={{ color: c.textPrimary }} className="text-lg font-bold">{currentActType === 'form' ? 'Formulario (Choice)' : 'Tarea (Desarrollo)'}</Text>
+                      <Text style={{ color: c.textSecondary }} className="text-sm">{tasks.length} Preguntas</Text>
+                    </View>
                   </View>
-
                   <TouchableOpacity style={{ backgroundColor: tasks.length > 0 ? c.accent : c.separator, marginBottom: isAdmin && tasks.length > 0 ? 12 : 0 }} className="w-full py-4 rounded-2xl items-center" onPress={() => tasks.length > 0 && router.push({ pathname: '/group/[id]/quiz', params: { id: group_id, activity_id } })}>
                     <Text style={{ color: tasks.length > 0 ? c.textPrimary : c.textSecondary }} className="text-base font-bold">Responder Actividad</Text>
                   </TouchableOpacity>
-
                   {isAdmin && tasks.length > 0 && (
                     <TouchableOpacity style={{ backgroundColor: `${c.accent}20` }} className="w-full py-4 rounded-2xl items-center flex-row justify-center" onPress={() => router.push(`/group/${group_id}/activity/${activity_id}/responses`)}>
                       <Ionicons name="people-outline" size={20} color={c.accentStrong} className="mr-2" />
-                      <Text style={{ color: c.accentStrong }} className="text-base font-bold ml-2">Evaluar Respuestas</Text>
+                      <Text style={{ color: c.accentStrong }} className="text-base font-bold ml-2">
+                        {currentActType === 'form' ? 'Ver Respuestas' : 'Evaluar Respuestas'}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
-
                 <View className="flex-row justify-between items-center mb-4">
                   <Text style={{ color: c.textSecondary, fontWeight: 'bold' }}>PREGUNTAS</Text>
-                  <TouchableOpacity style={{ backgroundColor: `${c.accent}20` }} className="px-3 py-1.5 rounded-full" onPress={() => setShowAnswers(!showAnswers)}><Text style={{ color: c.accentStrong, fontSize: 12, fontWeight: 'bold' }}>{showAnswers ? 'Ocultar' : 'Mostrar'}</Text></TouchableOpacity>
+                  <TouchableOpacity style={{ backgroundColor: `${c.accent}20` }} className="px-3 py-1.5 rounded-full" onPress={() => setShowAnswers(!showAnswers)}>
+                    <Text style={{ color: c.accentStrong, fontSize: 12, fontWeight: 'bold' }}>{showAnswers ? 'Ocultar' : 'Mostrar'}</Text>
+                  </TouchableOpacity>
                 </View>
-
                 <FlatList
                   data={tasks}
                   keyExtractor={item => item.id}
@@ -426,11 +429,16 @@ export default function ActivityAndTasksScreen() {
                       {item.task_type === 'multiple_choice' && showAnswers && (
                         <View className="mt-2 pl-2">
                           {item.task_options.map(opt => (
-                            <View key={opt.id} className="flex-row items-center mt-1.5"><Ionicons name={opt.is_correct ? "checkmark-circle" : "ellipse-outline"} size={16} color={opt.is_correct ? c.accentStrong : c.border} /><Text style={{ color: opt.is_correct ? c.accentStrong : c.textSecondary, marginLeft: 6 }}>{opt.text}</Text></View>
+                            <View key={opt.id} className="flex-row items-center mt-1.5">
+                              <Ionicons name={opt.is_correct ? "checkmark-circle" : "ellipse-outline"} size={16} color={opt.is_correct ? c.accentStrong : c.border} />
+                              <Text style={{ color: opt.is_correct ? c.accentStrong : c.textSecondary, marginLeft: 6 }}>{opt.text}</Text>
+                            </View>
                           ))}
                         </View>
                       )}
-                      {item.task_type === 'open_answer' && showAnswers && item.task_options[0] && <Text style={{ color: c.textSecondary, fontStyle: 'italic', marginTop: 8 }}>Sugerencia: {item.task_options[0].text}</Text>}
+                      {item.task_type === 'open_answer' && showAnswers && item.task_options[0] && (
+                        <Text style={{ color: c.textSecondary, fontStyle: 'italic', marginTop: 8 }}>Sugerencia: {item.task_options[0].text}</Text>
+                      )}
                     </View>
                   )}
                 />
@@ -439,39 +447,52 @@ export default function ActivityAndTasksScreen() {
           </View>
         )}
 
-        {/* EL BOTÓN DE AGREGAR PREGUNTAS SOLO SE MUESTRA SI NO ES TIMER */}
         {isAdmin && !loading && currentActType !== 'timer' && (
-          <TouchableOpacity style={{ backgroundColor: c.accent }} className="absolute bottom-10 right-5 w-14 h-14 rounded-full items-center justify-center shadow-md" onPress={() => setCreateModalVisible(true)}><Ionicons name="add" size={32} color={c.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity style={{ backgroundColor: c.accent }} className="absolute bottom-10 right-5 w-14 h-14 rounded-full items-center justify-center shadow-md" onPress={() => setCreateModalVisible(true)}>
+            <Ionicons name="add" size={32} color={c.textPrimary} />
+          </TouchableOpacity>
         )}
 
         <Modal visible={createModalVisible} transparent animationType="slide" onRequestClose={resetAndCloseModal}>
           <Pressable style={{ flex: 1, backgroundColor: c.modalOverlay, justifyContent: 'flex-end' }} onPress={resetAndCloseModal}>
             <Pressable style={{ backgroundColor: c.surface, paddingBottom: 20 + kbHeight }} className="rounded-t-3xl pt-4" onPress={e => e.stopPropagation()}>
               <View className="px-6">
-                <View className="items-center mb-6 mt-2"><View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" /></View>
-                <Text style={{ color: c.textPrimary, fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>{editingTaskId ? 'Editar Pregunta' : 'Crear Pregunta'}</Text>
+                <View className="items-center mb-6 mt-2">
+                  <View style={{ backgroundColor: c.handle }} className="w-12 h-1.5 rounded-full" />
+                </View>
+                <Text style={{ color: c.textPrimary, fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>
+                  {editingTaskId ? 'Editar Pregunta' : 'Crear Pregunta'}
+                </Text>
               </View>
               <ScrollView style={{ maxHeight: Platform.OS === 'ios' ? 350 : 300 }} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 20 }}>
                 <TextInput style={{ backgroundColor: c.background, color: c.textPrimary, padding: 16, borderRadius: 12, marginBottom: 16 }} placeholder="Enunciado de la pregunta" placeholderTextColor={c.textSecondary} value={questionText} onChangeText={setQuestionText} />
-
                 {currentActType === 'form' ? (
                   <View>
                     <Text style={{ color: c.textSecondary, marginBottom: 8 }}>Opciones del Multiple Choice</Text>
                     {options.map((opt, idx) => (
                       <View key={idx} className="flex-row items-center mb-2">
-                        <TouchableOpacity onPress={() => setCorrectOptionIndex(idx)} className="mr-3"><Ionicons name={idx === correctOptionIndex ? "radio-button-on" : "radio-button-off"} size={24} color={idx === correctOptionIndex ? c.accentStrong : c.border} /></TouchableOpacity>
+                        <TouchableOpacity onPress={() => setCorrectOptionIndex(idx)} className="mr-3">
+                          <Ionicons name={idx === correctOptionIndex ? "radio-button-on" : "radio-button-off"} size={24} color={idx === correctOptionIndex ? c.accentStrong : c.border} />
+                        </TouchableOpacity>
                         <TextInput style={{ flex: 1, backgroundColor: c.background, color: c.textPrimary, padding: 12, borderRadius: 8 }} placeholder={`Opción ${idx + 1}`} placeholderTextColor={c.textSecondary} value={opt} onChangeText={text => { const newOpts = [...options]; newOpts[idx] = text; setOptions(newOpts); }} />
-                        {options.length > 2 && (<TouchableOpacity onPress={() => handleRemoveOption(idx)} className="ml-2 p-2"><Ionicons name="trash-outline" size={20} color="#EF4444" /></TouchableOpacity>)}
+                        {options.length > 2 && (
+                          <TouchableOpacity onPress={() => handleRemoveOption(idx)} className="ml-2 p-2">
+                            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                          </TouchableOpacity>
+                        )}
                       </View>
                     ))}
                     {options.length < 5 && (
-                      <TouchableOpacity onPress={() => setOptions([...options, ''])} className="mt-4 flex-row items-center"><Ionicons name="add-circle-outline" size={20} color={c.accentStrong} /><Text style={{ color: c.accentStrong, fontWeight: 'bold', marginLeft: 8 }}>Agregar Opción</Text></TouchableOpacity>
+                      <TouchableOpacity onPress={() => setOptions([...options, ''])} className="mt-4 flex-row items-center">
+                        <Ionicons name="add-circle-outline" size={20} color={c.accentStrong} />
+                        <Text style={{ color: c.accentStrong, fontWeight: 'bold', marginLeft: 8 }}>Agregar Opción</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 ) : (
                   <View>
                     <Text style={{ color: c.textSecondary, marginBottom: 8 }}>Desarrollo Abierto</Text>
-                    <TextInput style={{ backgroundColor: c.background, color: c.textPrimary, padding: 16, borderRadius: 12, height: 100 }} placeholder="Respuesta sugerida (para guiar al profesor al evaluar)" placeholderTextColor={c.textSecondary} value={openAnswerModel} onChangeText={setOpenAnswerModel} multiline />
+                    <TextInput style={{ backgroundColor: c.background, color: c.textPrimary, padding: 16, borderRadius: 12, height: 100 }} placeholder="Respuesta sugerida" placeholderTextColor={c.textSecondary} value={openAnswerModel} onChangeText={setOpenAnswerModel} multiline />
                   </View>
                 )}
               </ScrollView>
@@ -484,7 +505,6 @@ export default function ActivityAndTasksScreen() {
           </Pressable>
         </Modal>
 
-        {/* MODAL PARA ELIMINAR LA ACTIVIDAD */}
         <ConfirmModal
           visible={activityToDelete}
           title="Eliminar Actividad"
@@ -495,8 +515,6 @@ export default function ActivityAndTasksScreen() {
           onConfirm={confirmDeleteActivity}
           onCancel={() => !deleting && setActivityToDelete(false)}
         />
-
-        {/* MODAL PARA ELIMINAR UNA PREGUNTA */}
         <ConfirmModal
           visible={!!taskToDelete}
           title="Eliminar Pregunta"
@@ -507,7 +525,6 @@ export default function ActivityAndTasksScreen() {
           onConfirm={confirmDeleteTask}
           onCancel={() => !deleting && setTaskToDelete(null)}
         />
-
       </SafeAreaView>
     </>
   );
